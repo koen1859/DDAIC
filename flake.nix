@@ -19,10 +19,11 @@
             numpy
             matplotlib
             polars
+            fastexcel
           ]);
     in {
       devShells.default = pkgs.mkShell {
-        buildInputs = python;
+        buildInputs = [python];
       };
     });
 }

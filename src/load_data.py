@@ -2,6 +2,13 @@ import polars as pl
 from datetime import date, datetime
 
 
+def sanitize_name(name: str) -> str:
+    invalid_chars = r'\/:*?"<>|'
+    for c in invalid_chars:
+        name = name.replace(c, "_")
+    return name
+
+
 class Article:
     def __init__(self, info_row: list, demand_row: list, dates: list) -> None:
         # Check if rows correspond
@@ -13,7 +20,7 @@ class Article:
 
         # Load the basic article information
         self.id: int = int(info_row[0])
-        self.name: str = str(info_row[2])  # English name
+        self.name: str = sanitize_name(str(info_row[2]))  # English name
         self.target_sl_given: float = float(info_row[3])
         self.min_order_quantity: float = float(info_row[4])
         self.sales_price: float = float(info_row[5])

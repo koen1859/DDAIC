@@ -1,13 +1,14 @@
-import polars as pl
+from load_data import load_data, Article
+from fast_mover import (
+    ExponentialSmoothing,
+    ExponentialSmoothingWithTrend,
+    ExponentialSmoothingWithTrendSeasonality,
+)
+from plot import plot_demand
 
-article_data = pl.read_excel("data/DDAIC_ass_data_2026.xlsx", sheet_name="ArticleData")
-demand_data = pl.read_excel("data/DDAIC_ass_data_2026.xlsx", sheet_name="Demand data")
-demand_data = demand_data.rename(
-    {
-        demand_data.columns[i]: str(demand_data[0, i])
-        for i in range(2, demand_data.width)
-    }
-).slice(1)
 
-print(article_data)
-print(demand_data)
+articles: list[Article] = load_data()
+for i, article in enumerate(articles):
+    model = ExponentialSmoothingWithTrendSeasonality(article.train_demand)
+    forecast_demand: list[float] = model.forecast(article.test_demand)
+    plot_demand(article, forecast_demand)

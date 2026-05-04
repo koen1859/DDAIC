@@ -1,6 +1,6 @@
 import polars as pl
 from datetime import date, datetime
-from concurrent.futures import ProcessPoolExecutor
+import multiprocessing
 
 
 def sanitize_name(name: str) -> str:
@@ -92,8 +92,8 @@ def load_data() -> list[Article]:
     ]
 
     # Store the data in list of Article
-    with ProcessPoolExecutor() as executor:
-        results = list(executor.map(process_article, args_list))
+    with multiprocessing.Pool() as pool:
+        results = list(pool.map(process_article, args_list))
 
     articles = [a for a in results if a is not None]
     return articles

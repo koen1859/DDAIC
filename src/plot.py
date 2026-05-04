@@ -3,7 +3,7 @@ import os
 from load_data import Article
 
 
-def plot_demand(article: Article, forecast_demand: list[float]):
+def plot_demand(article: Article, forecasts: list[float]):
     # Plot full true demand
     plt.figure(figsize=(12, 6))
     plt.plot(article.dates, article.demand, label="True Demand", color="black")
@@ -11,15 +11,16 @@ def plot_demand(article: Article, forecast_demand: list[float]):
     # Plot forecasted demand (aligned with test_dates)
     plt.plot(
         article.test_dates,
-        forecast_demand,
+        forecasts,
         label="Forecasted Demand",
         color="red",
         linestyle="--",
     )
 
+    plt.title(f"{article.name}")
     plt.xlabel("Date")
     plt.ylabel("Demand")
     plt.legend()
     plt.tight_layout()
     os.makedirs("../figures", exist_ok=True)
-    plt.savefig(f"../figures/{article.name}_demand_forecast.png")
+    plt.savefig(f"../figures/{article.id}_demand_forecast.png")

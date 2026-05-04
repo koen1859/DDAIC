@@ -1,9 +1,10 @@
 import polars as pl
 from datetime import date, datetime
+from concurrent.futures import ProcessPoolExecutor
 
 
 def sanitize_name(name: str) -> str:
-    invalid_chars = r'\/:*?"<>|'
+    invalid_chars = r'\/:*?"<>| '
     for c in invalid_chars:
         name = name.replace(c, "_")
     return name
@@ -20,7 +21,7 @@ class Article:
 
         # Load the basic article information
         self.id: int = int(info_row[0])
-        self.name: str = sanitize_name(str(info_row[2]))  # English name
+        self.name: str = str(info_row[2])  # English name
         self.target_sl_given: float = float(info_row[3])
         self.min_order_quantity: float = float(info_row[4])
         self.sales_price: float = float(info_row[5])
@@ -39,19 +40,19 @@ class Article:
         self.demand = self.demand[first_nonzero:]
         self.dates = self.dates[first_nonzero:]
 
-        # Find if slow mover or not (0 demand more than 50% of time)
-        # This is just a random metric I thought of maybe it works
-        self.slow_mover: bool = (
-            (sum(1 for d in self.demand if d == 0) / len(self.demand)) > 0.5
-            if self.demand
-            else True
-        )
-
         # We initialize methods on 2015-2017 and test on 2018
         self.train_dates = [d for d in self.dates if d.year < 2018]
         self.test_dates = [d for d in self.dates if d.year == 2018]
         self.train_demand = self.demand[: len(self.train_dates)]
         self.test_demand = self.demand[len(self.train_dates) :]
+
+        # Find if slow mover or not (0 demand more than 50% of time)
+        # This is just a random metric I thought of maybe it works
+        self.slow_mover: bool = (
+            (sum(1 for d in self.train_demand if d == 0) / len(self.train_demand)) > 0.5
+            if self.demand
+            else True
+        )
 
     # Method to print class for debugging
     def __str__(self):
@@ -60,6 +61,14 @@ class Article:
             f"min_order_quantity={self.min_order_quantity}, sales_price={self.sales_price}, "
             f"lead_time={self.lead_time}, slow_mover={self.slow_mover})"
         )
+
+
+def process_article(args):
+    info_row, demand_row, dates = args
+    any_demand = any(int(d) != 0 for d in demand_row[2:])
+    if not any_demand:
+        return None
+    return Article(info_row, demand_row, dates)
 
 
 def load_data() -> list[Article]:
@@ -76,22 +85,15 @@ def load_data() -> list[Article]:
         }
     ).slice(1)
 
+    dates = list(demand_data.columns)
+    args_list = [
+        (list(article_data.row(i)), list(demand_data.row(i)), dates)
+        for i in range(demand_data.shape[0])
+    ]
+
     # Store the data in list of Article
-    articles: list[Article] = []
-    for row_id in range(demand_data.shape[0]):
-        info_row = list(article_data.row(row_id))
-        demand_row = list(demand_data.row(row_id))
+    with ProcessPoolExecutor() as executor:
+        results = list(executor.map(process_article, args_list))
 
-        # Filter out any articles that never get any demand
-        any_demand: bool = False
-        for d in demand_row[2:]:
-            # If any is nonzero set to true and stop loop
-            if int(d) != 0:
-                any_demand = True
-                break
-        # If no demand over entire period, just drop the article
-        if not any_demand:
-            continue
-
-        articles.append(Article(info_row, demand_row, list(demand_data.columns)))
+    articles = [a for a in results if a is not None]
     return articles

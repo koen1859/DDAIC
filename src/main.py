@@ -1,15 +1,15 @@
 from load_data import load_data, Article
-from fast_mover import (
-    ExponentialSmoothing,
-    ExponentialSmoothingWithTrend,
-)
+from forecasting import ExponentialSmoothing, Croston
 from plot import plot_demand
 import multiprocessing
 
 
 def process_article(article: Article):
     print(f"Forecasting for article {article.name}")
-    model = ExponentialSmoothing(article)
+    if article.slow_mover:
+        model = Croston(article)
+    else:
+        model = ExponentialSmoothing(article)
 
     # Loop over the test periods' dates
     for i, current_date in enumerate(article.test_dates):

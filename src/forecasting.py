@@ -100,3 +100,85 @@ class ExponentialSmoothingWithTrend:
         self.forecasts[self.current_idx :] = [
             self.a + (h + 1) * self.b for h in range(remaining)
         ]
+
+
+from load_data import Article
+from datetime import date
+
+
+class Croston:
+    def __init__(
+        self,
+        article: Article,
+        alpha: float = 0.3,
+        beta: float = 0.3,
+    ) -> None:
+        self.article: Article = article
+        self.alpha: float = alpha
+        self.beta: float = beta
+
+        # Track index of last observed test demand used
+        self.current_idx: int = 0
+
+        # Initialize demand size and interval from training data
+        positive_indices = [i for i, x in enumerate(article.train_demand) if x > 0]
+
+        if len(positive_indices) == 0:
+            # No positive demand in training data
+            self.k_hat: float = 1.0
+            self.d_hat: float = 0.0
+        else:
+            positive_demands = [article.train_demand[i] for i in positive_indices]
+
+            intervals = [
+                positive_indices[i] - positive_indices[i - 1]
+                for i in range(1, len(positive_indices))
+            ]
+
+            self.k_hat = sum(intervals) / len(intervals)
+            self.d_hat = sum(positive_demands) / len(positive_demands)
+
+        self.a: float = self.d_hat / self.k_hat if self.k_hat > 0 else 0.0
+
+        # Periods since last positive demand
+        self.periods_since_demand: int = 0
+
+        # Initialize forecasts
+        days: int = len(self.article.test_demand)
+        self.forecasts: list[float] = [self.a] * days
+
+    def update(self, current_date: date):
+        """
+        Given a date, update Croston parameters based on all observed
+        demand up to current_date.
+        """
+        while (
+            self.current_idx < len(self.article.test_dates)
+            and self.article.test_dates[self.current_idx] <= current_date
+        ):
+            demand = self.article.test_demand[self.current_idx]
+            self.periods_since_demand += 1
+
+            if demand > 0:
+                # Update interval estimate
+                self.k_hat = (
+                    1 - self.alpha
+                ) * self.k_hat + self.alpha * self.periods_since_demand
+
+                # Update demand size estimate
+                self.d_hat = (1 - self.beta) * self.d_hat + self.beta * demand
+
+                # Forecast demand per period
+                self.a = self.d_hat / self.k_hat
+
+                # Reset interval counter
+                self.periods_since_demand = 0
+
+            self.current_idx += 1
+
+    def forecast(self) -> None:
+        """
+        Forecast demand until end of test period.
+        """
+        remaining = len(self.article.test_demand) - self.current_idx
+        self.forecasts[self.current_idx :] = [self.a] * remaining

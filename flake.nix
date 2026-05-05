@@ -23,7 +23,7 @@
           ]);
     in {
       devShells.default = pkgs.mkShell {
-        buildInputs = [python];
+        buildInputs = [python pkgs.vscodium];
       };
     });
 }

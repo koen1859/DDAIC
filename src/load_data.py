@@ -46,10 +46,10 @@ class Article:
         self.train_demand = self.demand[: len(self.train_dates)]
         self.test_demand = self.demand[len(self.train_dates) :]
 
-        # Find if slow mover or not (0 demand more than 50% of time)
+        # Find if slow mover or not (0 demand more than 80% of time)
         # This is just a random metric I thought of maybe it works
         self.slow_mover: bool = (
-            (sum(1 for d in self.train_demand if d == 0) / len(self.train_demand)) > 0.5
+            (sum(1 for d in self.train_demand if d == 0) / len(self.train_demand)) > 0.8
             if self.demand
             else True
         )
@@ -63,7 +63,7 @@ class Article:
         )
 
 
-def process_article(args):
+def process_article(args) -> Article | None:
     info_row, demand_row, dates = args
     any_demand = any(int(d) != 0 for d in demand_row[2:])
     if not any_demand:
@@ -95,5 +95,7 @@ def load_data() -> list[Article]:
     with multiprocessing.Pool() as pool:
         results = list(pool.map(process_article, args_list))
 
-    articles = [a for a in results if a is not None]
+    articles = [
+        a for a in results if a is not None and any(d != 0 for d in a.test_demand)
+    ]
     return articles

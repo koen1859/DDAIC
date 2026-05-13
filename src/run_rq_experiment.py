@@ -10,7 +10,7 @@ import csv
 from pathlib import Path
 
 from load_data import load_data, Article
-from forecasting import Croston, ExponentialSmoothing, ExponentialSmoothingWithTrend
+from forecasting import Croston, ExponentialSmoothing
 from inventory import aggregate_fill_rate, make_forecasts, order_quantity, simulate_rq
 
 
@@ -34,7 +34,9 @@ def evaluate_for_minimum(min_fill_rate: float, global_target: float = 0.98):
         for article in articles:
             forecasts = make_forecasts(article, choose_model(article), update_every=7)
             q = order_quantity(article, min_days_of_supply=0)  # default: MOQ
-            results.append(simulate_rq(article, forecasts, target_fill_rate=sku_target, q=q))
+            results.append(
+                simulate_rq(article, forecasts, target_fill_rate=sku_target, q=q)
+            )
 
         total_fr = aggregate_fill_rate(results)
         if total_fr >= global_target:
@@ -59,16 +61,20 @@ def main():
         orders = sum(r.orders_placed for r in results)
         units_ordered = sum(r.units_ordered for r in results)
 
-        summary_rows.append({
-            "minimum_fill_rate": min_fr,
-            "common_sku_target_used": sku_target,
-            "realized_total_fill_rate": total_fr,
-            "sum_avg_on_hand": avg_stock,
-            "orders_placed": orders,
-            "units_ordered": units_ordered,
-        })
+        summary_rows.append(
+            {
+                "minimum_fill_rate": min_fr,
+                "common_sku_target_used": sku_target,
+                "realized_total_fill_rate": total_fr,
+                "sum_avg_on_hand": avg_stock,
+                "orders_placed": orders,
+                "units_ordered": units_ordered,
+            }
+        )
 
-        with open(out_dir / f"rq_sku_results_min_{int(min_fr*100)}.csv", "w", newline="") as f:
+        with open(
+            out_dir / f"rq_sku_results_min_{int(min_fr * 100)}.csv", "w", newline=""
+        ) as f:
             writer = csv.DictWriter(f, fieldnames=list(results[0].as_dict().keys()))
             writer.writeheader()
             writer.writerows(r.as_dict() for r in results)

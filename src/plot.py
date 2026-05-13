@@ -29,3 +29,34 @@ def plot_demand(article: Article, forecasts: list[float]):
     os.makedirs("../figures", exist_ok=True)
     plt.savefig(f"../figures/{article.id}_demand_forecast.png")
     plt.close()
+
+
+def plot_inventory_strategy(
+    article: Article,
+    dates: list,
+    on_hand: list[int],
+    inv_position: list[int],
+    R_series: list[int],
+    Q_series: list[int],
+):
+    # Plot inventory levels and policy parameters
+    plt.figure(figsize=(12, 6))
+
+    # Inventory levels
+    plt.plot(dates, on_hand, label="On-hand inventory", color="blue")
+    plt.plot(
+        dates, inv_position, label="Inventory position", color="purple", linestyle="--"
+    )
+
+    # Policy parameters
+    plt.plot(dates, R_series, label="Reorder point (R)", color="green")
+    plt.plot(dates, Q_series, label="Order quantity (Q)", color="orange")
+
+    plt.title(f"{article.name} - Inventory Strategy Over Time")
+    plt.xlabel("Date")
+    plt.ylabel("Units")
+    plt.legend()
+    plt.tight_layout()
+    os.makedirs("../figures", exist_ok=True)
+    plt.savefig(f"../figures/{article.id}_inventory_strategy.png")
+    plt.close()

@@ -6,6 +6,7 @@ It uses the existing Article object and any forecasting model that exposes:
 """
 
 from __future__ import annotations
+from forecasting import ExponentialSmoothing, Croston
 
 from dataclasses import dataclass, asdict
 from math import ceil, exp, isfinite, pi, sqrt
@@ -57,7 +58,9 @@ def _unit_normal_loss(z: float) -> float:
     return _normal_pdf(z) - z * (1.0 - _NORMAL.cdf(z))
 
 
-def safety_factor_for_fill_rate(fill_rate: float, q: float, sigma_lead_time: float) -> float:
+def safety_factor_for_fill_rate(
+    fill_rate: float, q: float, sigma_lead_time: float
+) -> float:
     """Return z for beta fill rate under an (R,Q) normal lead-time demand approximation.
 
     beta = 1 - E[shortage per cycle] / Q
@@ -84,7 +87,9 @@ def safety_factor_for_fill_rate(fill_rate: float, q: float, sigma_lead_time: flo
     return (lo + hi) / 2.0
 
 
-def estimate_sigma_daily(article: Article, fitted_daily_mean: float | None = None) -> float:
+def estimate_sigma_daily(
+    article: Article, fitted_daily_mean: float | None = None
+) -> float:
     """Estimate daily demand uncertainty from 2015-2017 training demand.
 
     A simple robust fallback is used because many SKUs are intermittent.
@@ -99,7 +104,9 @@ def estimate_sigma_daily(article: Article, fitted_daily_mean: float | None = Non
     return sigma if isfinite(sigma) else 0.0
 
 
-def order_quantity(article: Article, multiplier: int = 1, min_days_of_supply: int = 0) -> int:
+def order_quantity(
+    article: Article, multiplier: int = 1, min_days_of_supply: int = 0
+) -> int:
     """Choose Q. Default is MOQ; optional days-of-supply prevents tiny Q for high-volume SKUs."""
     moq = max(1, int(ceil(article.min_order_quantity)))
     if min_days_of_supply <= 0:
@@ -109,7 +116,9 @@ def order_quantity(article: Article, multiplier: int = 1, min_days_of_supply: in
     return max(moq, dos_q) * max(1, multiplier)
 
 
-def lead_time_forecast_sum(forecasts: list[float], start_idx: int, lead_time: int) -> float:
+def lead_time_forecast_sum(
+    forecasts: list[float], start_idx: int, lead_time: int
+) -> float:
     """Expected demand during lead time using the currently available daily forecasts."""
     if not forecasts:
         return 0.0
@@ -139,9 +148,10 @@ def reorder_point(
     return max(0, int(ceil(mu_lt + z * sigma_lt)))
 
 
-def make_forecasts(article: Article, model_factory: Callable[[Article], object], update_every: int = 7) -> list[float]:
+def make_forecasts(
+    article: Article, model: ExponentialSmoothing | Croston, update_every: int = 1
+) -> list[float]:
     """Produce rolling forecasts for the 2018 test period using your existing model classes."""
-    model = model_factory(article)
     for i, current_date in enumerate(article.test_dates):
         if i % update_every == 0:
             model.update(current_date)
@@ -163,9 +173,13 @@ def simulate_rq(
     The assignment asks for the first six months of 2018, so this function cuts the
     test set at 2018-06-30 even if Article.test_demand contains the full year.
     """
-    horizon = [i for i, d in enumerate(article.test_dates) if d.year == 2018 and d.month <= 6]
+    horizon = [
+        i for i, d in enumerate(article.test_dates) if d.year == 2018 and d.month <= 6
+    ]
     if not horizon:
-        return RQResult(article.id, article.name, target_fill_rate, 1.0, 0, 0, 0, 0.0, 0, 0, 0.0, 0)
+        return RQResult(
+            article.id, article.name, target_fill_rate, 1.0, 0, 0, 0, 0.0, 0, 0, 0.0, 0
+        )
 
     end_idx = horizon[-1] + 1
     actual = article.test_demand[:end_idx]
@@ -173,7 +187,9 @@ def simulate_rq(
 
     q = int(q if q is not None else order_quantity(article))
     q = max(1, q)
-    sigma_daily = estimate_sigma_daily(article) if sigma_daily is None else max(0.0, sigma_daily)
+    sigma_daily = (
+        estimate_sigma_daily(article) if sigma_daily is None else max(0.0, sigma_daily)
+    )
     lead_time = max(1, int(article.lead_time))
 
     r0 = reorder_point(fc, 0, lead_time, target_fill_rate, q, sigma_daily)
@@ -190,7 +206,9 @@ def simulate_rq(
         arrivals = [qty for arrival_t, qty in outstanding if arrival_t <= t]
         if arrivals:
             on_hand += sum(arrivals)
-            outstanding = [(arrival_t, qty) for arrival_t, qty in outstanding if arrival_t > t]
+            outstanding = [
+                (arrival_t, qty) for arrival_t, qty in outstanding if arrival_t > t
+            ]
 
         # Demand occurs; unfilled units are treated as lost sales for fill-rate measurement.
         d = max(0, int(demand))

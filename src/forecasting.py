@@ -11,6 +11,9 @@ class ExponentialSmoothing:
         # calculation of the parameters
         self.current_idx: int = 0
 
+        # Keep track of the training residuals
+        self.residuals: list[float] = []
+
         # Initialize a_{-1} by Exponentially Weighted Moving Average
         numerator: float = 0.0
         denominator: float = 0.0
@@ -20,6 +23,11 @@ class ExponentialSmoothing:
             denominator += weight
             weight *= 1 - alpha
         self.a: float = numerator / denominator
+
+        # Loop over data again for exponential smoothing a and track residuals
+        for x in article.train_demand:
+            self.residuals.append(x - self.a)
+            self.a = (1 - self.alpha) * self.a + self.alpha * x
 
         days: int = len(self.article.test_demand)
         self.forecasts: list[float] = [self.a] * days
@@ -33,10 +41,13 @@ class ExponentialSmoothing:
             self.current_idx < len(self.article.test_dates)
             and self.article.test_dates[self.current_idx] <= current_date
         ):
+            x = self.article.test_demand[self.current_idx]
+
+            # Add the new residual
+            self.residuals.append(x - self.a)
+
             # If earliest not already used data point is before the current date, use it to update param
-            self.a: float = (
-                1 - self.alpha
-            ) * self.a + self.alpha * self.article.test_demand[self.current_idx]
+            self.a = (1 - self.alpha) * self.a + self.alpha * x
             self.current_idx += 1
 
     def forecast(self) -> None:
@@ -102,10 +113,6 @@ class ExponentialSmoothingWithTrend:
         ]
 
 
-from load_data import Article
-from datetime import date
-
-
 class Croston:
     def __init__(
         self,
@@ -119,6 +126,9 @@ class Croston:
 
         # Track index of last observed test demand used
         self.current_idx: int = 0
+
+        # Track training residuals
+        self.residuals: list[float] = []
 
         # Initialize demand size and interval from training data
         positive_indices = [i for i, x in enumerate(article.train_demand) if x > 0]
@@ -139,9 +149,34 @@ class Croston:
             self.d_hat = sum(positive_demands) / len(positive_demands)
 
         self.a: float = self.d_hat / self.k_hat if self.k_hat > 0 else 0.0
-
-        # Periods since last positive demand
         self.periods_since_demand: int = 0
+
+        # Update the parameters with exponential smoothing
+        for demand in article.train_demand:
+            self.residuals.append(demand - self.a)
+            if demand > 0:
+                # Update interval estimate
+                self.k_hat = (
+                    1 - self.alpha
+                ) * self.k_hat + self.alpha * self.periods_since_demand
+
+                # Update demand size estimate
+                self.d_hat = (1 - self.beta) * self.d_hat + self.beta * demand
+
+                # Forecast demand per period
+                self.a = self.d_hat / self.k_hat
+
+                # Reset interval counter
+                self.periods_since_demand = 0
+
+            self.current_idx += 1
+
+        # Update periods since last positive demand
+        for i in range(len(self.article.train_demand) - 1, -1, -1):
+            if self.article.train_demand[i] == 0:
+                self.periods_since_demand += 1
+            else:
+                break
 
         # Initialize forecasts
         days: int = len(self.article.test_demand)

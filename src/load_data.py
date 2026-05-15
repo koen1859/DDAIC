@@ -23,7 +23,7 @@ class Article:
         self.id: int = int(info_row[0])
         self.name: str = str(info_row[2])  # English name
         self.target_sl_given: float = float(info_row[3])
-        self.min_order_quantity: float = float(info_row[4])
+        self.min_order_quantity: int = int(info_row[4])
         self.sales_price: float = float(info_row[5])
         self.lead_time: int = int(info_row[6])
 
@@ -46,13 +46,10 @@ class Article:
         self.train_demand = self.demand[: len(self.train_dates)]
         self.test_demand = self.demand[len(self.train_dates) :]
 
-        # Find if slow mover or not (0 demand more than 80% of time)
-        # This is just a random metric I thought of maybe it works
+        # Find if slow mover or not (0 demand more than 20% of time)
         self.slow_mover: bool = (
-            (sum(1 for d in self.train_demand if d == 0) / len(self.train_demand)) > 0.8
-            if self.demand
-            else True
-        )
+            sum(1 for d in self.train_demand if d != 0) / len(self.train_demand)
+        ) < 0.8
 
     # Method to print class for debugging
     def __str__(self):

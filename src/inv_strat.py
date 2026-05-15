@@ -2,7 +2,7 @@ from forecasting import ExponentialSmoothing, Croston
 from load_data import Article
 
 from statistics import NormalDist, mean
-from math import sqrt, ceil, inf
+from math import sqrt, ceil
 
 normal = NormalDist()
 
@@ -38,17 +38,10 @@ class InvStratNormal:
         self.min_fill_rate: float = min_fill_rate
         self.article: Article = article
         self.model: ExponentialSmoothing | Croston = model
-        self.R: float = 0.0
-        self.Q: float = 0.0
+        self.R: int = 0
 
-        # Backorder cost per unit per day
-        self.b1: float = self.article.sales_price / 2
-
-        # Holding cost per unit per day
-        self.h: float = self.article.sales_price * 0.2 * (1 / 365)
-
-        # In optimal solution service levels are:
-        self.S2 = self.S3 = max(self.b1 / (self.h + self.b1), self.min_fill_rate)
+        # At least MOQ and at least avg daily demand
+        self.Q: int = max(article.min_order_quantity, ceil(model.forecasts[0]))
 
     def lead_time_demand(self) -> tuple[float, float]:
         mu: float = sum(self.model.forecasts[i] for i in range(self.article.lead_time))
@@ -110,59 +103,34 @@ class InvStratNormal:
             Q = self.Q
         return 1 - (sigma / Q) * (G((R - mu) / sigma) - G((R + Q - mu) / sigma))
 
-    def target_fill_rate(self) -> float:
-        return max(self.S2, self.min_fill_rate)
+    def optimize(self, tol: float = 1e-6, max_iter: int = 10_000) -> None:
+        """
+        Calculate the reorder point R as on page 98 of the book.
+        Use as order quantity the max of 1 day of demand and the MOQ
+        Optimal R is as low as possible s.t. we have at least min_fill_rate
+        """
+        self.Q = max(self.article.min_order_quantity, int(self.model.forecasts[0]))
+        mu, sigma = self.lead_time_demand()
 
-    def expected_backorders(self, R: float, Q: float, mu: float, sigma: float) -> float:
-        if sigma <= 0:
-            return max(0.0, mu - R)
-        return sigma * (G((R - mu) / sigma) - G((R + Q - mu) / sigma))
+        # Bounds as in the book, ensure upper bound is enough to achieve min_fill_rate
+        lower = -self.Q
+        upper = mu + 10.0 * sigma
+        while self.fill_rate(mu, sigma, upper, self.Q) < self.min_fill_rate:
+            upper += 10.0 * sigma
 
-    def expected_on_hand(self, R: float, Q: float, mu: float, sigma: float) -> float:
-        return Q / 2 + R - mu + self.expected_backorders(R, Q, mu, sigma)
+        # Bisection
+        for _ in range(max_iter):
+            mid = 0.5 * (lower + upper)
 
-    def solve_R_for_Q(self, Q: float, mu: float, sigma: float, target: float) -> float:
-        if sigma <= 0:
-            return max(mu, 0.0)
+            service = self.fill_rate(mu, sigma, mid, self.Q)
 
-        lo: float = 0.0
-        hi: float = mu + 10 * sigma + Q
-        while self.fill_rate(mu, sigma, R=hi, Q=Q) < target:
-            hi += 5 * sigma + Q
-            if hi > mu + 100 * sigma + 10 * Q:
+            if service < self.min_fill_rate:
+                lower = mid
+            else:
+                upper = mid
+
+            if abs(upper - lower) < tol:
                 break
 
-        for _ in range(60):
-            mid = (lo + hi) / 2
-            if self.fill_rate(mu, sigma, R=mid, Q=Q) < target:
-                lo = mid
-            else:
-                hi = mid
-        return hi
-
-    def optimize_RQ(self) -> tuple[int, int]:
-        mu, sigma = self.lead_time_demand()
-        target = self.target_fill_rate()
-
-        Q_min = max(1, int(ceil(self.article.min_order_quantity)))
-        Q_max = Q_min + max(50, int(6 * sigma + mu**0.5))
-
-        best_cost = inf
-        best_R = 0.0
-        best_Q = Q_min
-
-        for Q in range(Q_min, Q_max + 1):
-            R = self.solve_R_for_Q(Q, mu, sigma, target)
-
-            bo = self.expected_backorders(R, Q, mu, sigma)
-            oh = self.expected_on_hand(R, Q, mu, sigma)
-            cost = self.h * oh + self.b1 * bo
-
-            if cost < best_cost:
-                best_cost = cost
-                best_R = R
-                best_Q = Q
-
-        self.R = int(ceil(best_R))
-        self.Q = int(ceil(best_Q))
-        return self.R, self.Q
+        # Smallest R achieving target
+        self.R = ceil(upper)

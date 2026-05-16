@@ -20,8 +20,8 @@ def process_article(args: tuple[Article, float]) -> dict:
     inv_strat: InvStratNormal = InvStratNormal(article, model, min_fill_rate)
 
     backorders: int = 0
-    on_hand: int = int(sum(model.forecasts[i] for i in range(article.lead_time)))
-    order: list[int] = [0] * len(article.test_dates)  # (arrival_index, quantity)
+    on_hand: int = 0
+    order: list[int] = [0] * len(article.dates)  # (arrival_index, quantity)
 
     on_hand_hist: list[int] = []
     inv_pos_hist: list[int] = []
@@ -31,7 +31,7 @@ def process_article(args: tuple[Article, float]) -> dict:
     demand_satisfied_from_stock: int = 0
 
     # Loop over the test periods' dates
-    for i, current_date in enumerate(article.test_dates):
+    for i, current_date in enumerate(article.dates):
         # Receive orders arriving today
         on_hand += order[i]
 
@@ -46,11 +46,14 @@ def process_article(args: tuple[Article, float]) -> dict:
         model.forecast()
         inv_strat.optimize()
 
-        demand = article.test_demand[i]
-        total_demand += demand
+        demand = article.demand[i]
 
-        satisfied_now = min(on_hand, demand)
-        demand_satisfied_from_stock += satisfied_now
+        # If in test period, log
+        if current_date in article.test_dates:
+            total_demand += demand
+
+            satisfied_now = min(on_hand, demand)
+            demand_satisfied_from_stock += satisfied_now
 
         if on_hand >= demand:
             on_hand -= demand
@@ -67,10 +70,12 @@ def process_article(args: tuple[Article, float]) -> dict:
             if arrival_t < len(order):
                 order[arrival_t] = order_qty
 
-        on_hand_hist.append(on_hand)
-        inv_pos_hist.append(inventory_pos)
-        R_hist.append(inv_strat.R)
-        Q_hist.append(inv_strat.Q)
+        # If in test period, log
+        if current_date in article.test_dates:
+            on_hand_hist.append(on_hand)
+            inv_pos_hist.append(inventory_pos)
+            R_hist.append(inv_strat.R)
+            Q_hist.append(inv_strat.Q)
 
     plot_demand(article, model.forecasts)
     plot_inventory_strategy(

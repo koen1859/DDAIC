@@ -2,7 +2,7 @@ from math import ceil
 from plot import plot_demand, plot_inventory_strategy
 from load_data import load_data, Article
 from forecasting import ExponentialSmoothing, Croston
-from inv_strat import InvStratNormal
+from inv_strat import InvStratNormal, InvStratCompPois
 import multiprocessing
 import polars as pl
 
@@ -12,26 +12,34 @@ GLOBAL_TARGET: float = 0.98
 def process_article(args: tuple[Article, float]) -> dict:
     article: Article = args[0]
     min_fill_rate: float = args[1]
-    print(f"Simulating for article {article.name}")
     if article.slow_mover:
         model = Croston(article)
+        inv_strat: InvStratNormal = InvStratNormal(article, model, min_fill_rate)
     else:
         model = ExponentialSmoothing(article)
-    inv_strat: InvStratNormal = InvStratNormal(article, model, min_fill_rate)
+        inv_strat: InvStratNormal = InvStratNormal(article, model, min_fill_rate)
 
     backorders: int = 0
     on_hand: int = 0
     order: list[int] = [0] * len(article.dates)  # (arrival_index, quantity)
 
-    on_hand_hist: list[int] = []
-    inv_pos_hist: list[int] = []
-    R_hist: list[int] = []
-    Q_hist: list[int] = []
+    forecasts: list[float] = []
+    on_hand_list: list[int] = []
+    inv_pos_list: list[int] = []
+    R_list: list[int] = []
+    Q_list: list[int] = []
     total_demand: int = 0
     demand_satisfied_from_stock: int = 0
 
-    # Loop over the test periods' dates
+    in_test_period: bool = False
+    first_test_index: int = -1
+
     for i, current_date in enumerate(article.dates):
+        if not in_test_period:
+            if current_date in article.test_dates:
+                in_test_period = True
+                first_test_index = i
+
         # Receive orders arriving today
         on_hand += order[i]
 
@@ -41,17 +49,20 @@ def process_article(args: tuple[Article, float]) -> dict:
             on_hand -= fullfilled
             backorders -= fullfilled
 
-        # Update models
-        model.update(current_date)
-        model.forecast()
-        inv_strat.optimize()
-
         demand = article.demand[i]
 
-        # If in test period, log
-        if current_date in article.test_dates:
-            total_demand += demand
+        if demand > 0:
+            # Update models only on days with a positive demand,
+            # since we never order inventory on a day with 0 demand,
+            # since we can not drop below R when there is no demand
+            model.update(current_date)
+            inv_strat.optimize()
 
+        forecasts.append(model.forecast())
+
+        # Log results from test period
+        if in_test_period:
+            total_demand += demand
             satisfied_now = min(on_hand, demand)
             demand_satisfied_from_stock += satisfied_now
 
@@ -70,16 +81,19 @@ def process_article(args: tuple[Article, float]) -> dict:
             if arrival_t < len(order):
                 order[arrival_t] = order_qty
 
-        # If in test period, log
-        if current_date in article.test_dates:
-            on_hand_hist.append(on_hand)
-            inv_pos_hist.append(inventory_pos)
-            R_hist.append(inv_strat.R)
-            Q_hist.append(inv_strat.Q)
+        on_hand_list.append(on_hand)
+        inv_pos_list.append(inventory_pos)
+        R_list.append(inv_strat.R)
+        Q_list.append(inv_strat.Q)
 
-    plot_demand(article, model.forecasts)
+    plot_demand(article, forecasts, first_test_index)
     plot_inventory_strategy(
-        article, article.test_dates, on_hand_hist, inv_pos_hist, R_hist, Q_hist
+        article,
+        on_hand_list,
+        inv_pos_list,
+        R_list,
+        Q_list,
+        first_test_index,
     )
 
     return {

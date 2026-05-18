@@ -31,7 +31,7 @@ class Article:
         self.dates: list[date] = [
             datetime.strptime(d, "%Y%m%d").date() for d in dates[2:]
         ]
-        self.demand: list[int] = [int(d) for d in demand_row[2:]]
+        self.demand: list[int] = [max(int(d), 0) for d in demand_row[2:]]
 
         # Remove leading zeros for products only in assortment from later on
         first_nonzero = next(

@@ -20,6 +20,7 @@
             matplotlib
             polars
             fastexcel
+            scipy
           ]);
     in {
       devShells.default = pkgs.mkShell {

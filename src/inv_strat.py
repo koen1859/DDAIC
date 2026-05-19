@@ -227,8 +227,6 @@ class InvStratCompPois:
         while fill_rate(mu, sigma2, upper, self.Q) < self.min_fill_rate:
             upper += ceil(10 * sqrt(sigma2))
 
-        print(f"Bounds before bisection: ({lower, upper})")
-
         # Bisection
         for _ in range(50):
             if upper - lower <= 1:
@@ -243,5 +241,3 @@ class InvStratCompPois:
                 upper = mid
 
         self.R = upper
-
-        print(f"Optimized (R,Q) = ({self.R},{self.Q})")

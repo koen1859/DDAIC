@@ -34,6 +34,7 @@ def process_article(args: tuple[Article, float]) -> dict:
 
     in_test_period: bool = False
     first_test_index: int = -1
+    days_since_update: int = 0
 
     for i, current_date in enumerate(article.dates):
         if not in_test_period:
@@ -57,7 +58,14 @@ def process_article(args: tuple[Article, float]) -> dict:
             # since we never order inventory on a day with 0 demand,
             # since we can not drop below R when there is no demand
             model.update(current_date)
-            inv_strat.optimize()
+            if article.slow_mover:
+                # only update R,Q for slow movers at most once a month since otherwise very slow
+                if days_since_update > 30:
+                    inv_strat.optimize()
+                    days_since_update = 0
+            else:
+                inv_strat.optimize()
+        days_since_update += 1
 
         forecasts.append(model.forecast())
 

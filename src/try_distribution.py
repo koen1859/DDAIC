@@ -2,6 +2,7 @@ from load_data import load_data, Article
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats
+from scipy.optimize import minimize_scalar
 
 articles: list[Article] = load_data()
 
@@ -30,7 +31,7 @@ print(f"Number of positive observations: {len(data)}")
 print(f"Mean: {np.mean(data):.3f}")
 print(f"Variance: {np.var(data):.3f}")
 
-# Candidate distributions: Poisson, Geometric, Negative Binomial
+# Candidate distributions: Poisson, Geometric, Negative Binomial, Logarithmic
 
 x = np.arange(0, data.max() + 1)
 
@@ -55,11 +56,9 @@ plt.plot(
     label=f"Poisson λ={poisson_lambda:.2f}",
 )
 
-# -------------------
 # Geometric fit
 # scipy geometric starts at 1
 # mean = 1/p
-# -------------------
 geom_p = 1 / np.mean(data)
 geom_pmf = stats.geom.pmf(x, geom_p)
 
@@ -70,13 +69,11 @@ plt.plot(
     label=f"Geometric p={geom_p:.2f}",
 )
 
-# -------------------
 # Negative Binomial fit
 # Method of moments
 # variance = mu + mu^2 / r
 # => r = mu^2 / (var - mu)
 # p = r / (r + mu)
-# -------------------
 mu = np.mean(data)
 var = np.var(data)
 
@@ -95,6 +92,34 @@ if var > mu:
 else:
     print("Variance <= mean, Negative Binomial not appropriate")
 
+# Logarithmic (log-series) fit
+# Support starts at 1
+
+
+# Maximum likelihood estimate of p
+# Negative log-likelihood
+def neg_ll(p):
+    if p <= 0 or p >= 1:
+        return np.inf
+    return -np.sum(stats.logser.logpmf(data, p))
+
+
+result = minimize_scalar(
+    neg_ll,
+    bounds=(1e-6, 0.999999),
+    method="bounded",
+)
+
+logser_p = result.x
+
+logser_pmf = stats.logser.pmf(x, logser_p)
+
+plt.plot(
+    x,
+    logser_pmf,
+    "o-",
+    label=f"Logarithmic p={logser_p:.2f}",
+)
 plt.xlabel("Demand size")
 plt.ylabel("Probability")
 plt.title(f"Demand distribution fit for article {article.id}")
@@ -103,4 +128,5 @@ plt.grid()
 plt.show()
 
 
-# From this we conclude that the geometric distribution is the best fit
+# From this we conclude that the geometric or logartithmic distribution are the best fits
+# Logarithmic is much easier to work with so use this one in analysis.

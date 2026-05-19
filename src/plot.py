@@ -21,6 +21,13 @@ def plot_demand(article: Article, forecasts: list[float], first_test_index: int)
         linestyle="--",
     )
 
+    plt.axvline(
+        x=article.dates[first_test_index],
+        color="gray",
+        linestyle=":",
+        label="Test Period Start",
+    )
+
     plt.title(f"{article.name}")
     plt.xlabel("Date")
     plt.ylabel("Demand")
@@ -59,6 +66,13 @@ def plot_inventory_strategy(
         [R[i] + Q[i] for i in range(len(R))],
         label="Order up to (R + Q)",
         color="orange",
+    )
+
+    plt.axvline(
+        x=article.dates[first_test_index],
+        color="gray",
+        linestyle=":",
+        label="Test Period Start",
     )
 
     plt.title(f"{article.name} - Inventory Strategy Over Time")

@@ -5,6 +5,7 @@ from forecasting import ExponentialSmoothing, Croston
 from inv_strat import InvStratNormal, InvStratCompPois
 import multiprocessing
 import polars as pl
+import sys
 
 GLOBAL_TARGET: float = 0.98
 
@@ -14,7 +15,7 @@ def process_article(args: tuple[Article, float]) -> dict:
     min_fill_rate: float = args[1]
     if article.slow_mover:
         model = Croston(article)
-        inv_strat: InvStratNormal = InvStratNormal(article, model, min_fill_rate)
+        inv_strat: InvStratCompPois = InvStratCompPois(article, model, min_fill_rate)
     else:
         model = ExponentialSmoothing(article)
         inv_strat: InvStratNormal = InvStratNormal(article, model, min_fill_rate)
@@ -113,8 +114,28 @@ def main():
     with multiprocessing.Pool() as pool:
         min_fill_rate: float = GLOBAL_TARGET
         args = [(a, min_fill_rate) for a in articles]
-        results: pl.DataFrame = pl.DataFrame(pool.map(process_article, args))
+
+        raw_results = []
+        total_articles = len(args)
+
+        # Use imap_unordered to catch results as they finish
+        for i, result in enumerate(pool.imap_unordered(process_article, args), 1):
+            raw_results.append(result)
+
+            # Progress bar
+            percent = (i / total_articles) * 100
+            bar_length = 40
+            filled_length = int(bar_length * i // total_articles)
+            bar = "█" * filled_length + "-" * (bar_length - filled_length)
+            sys.stdout.write(
+                f"\rProgress: |{bar}| {percent:.1f}% ({i}/{total_articles})"
+            )
+            sys.stdout.flush()
+
+        # Convert the collected list of dicts to a df
+        results: pl.DataFrame = pl.DataFrame(raw_results)
         results.write_csv("../results/results.csv")
+
         print(
             f"Global fill rate achieved: {
                 sum(results['demand_satisfied_from_stock'])

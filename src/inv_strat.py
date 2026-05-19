@@ -1,10 +1,9 @@
 from forecasting import ExponentialSmoothing, Croston
 from load_data import Article
 
-
-from scipy.stats import poisson
+from scipy.stats import nbinom
 from statistics import NormalDist, mean
-from math import sqrt, ceil, factorial, exp, floor, comb
+from math import sqrt, ceil
 from functools import cache
 
 normal = NormalDist()
@@ -118,7 +117,7 @@ class InvStratNormal:
         # Bounds as in the book, ensure upper bound is enough to achieve min_fill_rate
         lower = -self.Q
         upper = mu + 10.0 * sigma
-        while self.fill_rate(mu, sigma, upper, self.R) < self.min_fill_rate:
+        while self.fill_rate(mu, sigma, upper, self.Q) < self.min_fill_rate:
             upper += 10.0 * sigma
 
         # Bisection
@@ -139,106 +138,58 @@ class InvStratNormal:
         self.R = ceil(upper)
 
 
-# The book uses as Geom(beta) where beta is failure prob of Bernoulli trial if I am not mistaken
-# Hence the inverse of the wikipedia of Geometric Distribution
 @cache
-def geom_pmf(k: int, beta: float) -> float:
-    return beta ** (k - 1) * (1 - beta)
-
-
-@cache
-def geom_cdf(k: int, beta: float) -> float:
-    return 1 - beta ** floor(k) if k >= 1 else 0
-
-
-@cache
-def geom_mean(beta: float) -> float:
-    return 1 / (1 - beta)
-
-
-def _f_jk(self, j: int, k: int, beta: float) -> float:
+def Dt_pmf(k: int, mu: float, sigma2: float) -> float:
     """
-    As in the book but the recursion is slow so not used
+    PMF of lead time demand
+    Parameters for this are inverse of in the book due to difference in how distr is defined
     """
-    if k == 0:
-        return 1.0 if j == 0 else 0.0
-    sum: float = 0
-    for i in range(k - 1, j):
-        sum += self.f_jk(i, k - 1, beta) * geom_pmf(j - i, beta)
-
-    return sum
-
-
-@cache
-def f_jk(j: int, k: int, beta: float) -> float:
-    """
-    Sum of geometric is actually negative binomial
-    """
-    if k == 0:
-        return 1.0 if j == 0 else 0.0
-    if j < k:
-        return 0.0
-
-    return comb(j - 1, k - 1) * (1 - beta) ** k * beta ** (j - k)
-
-
-@cache
-def Dt_pmf(
-    j: int,
-    t: int,
-    lamda: float,
-    beta: float,
-) -> float:
-    """
-    PMF of demand in t periods (where in our case we will take t=lead_time) but i made the function general
-    """
-    sum: float = 0
-    for k in range(
-        int(geom_mean(beta) * lamda * t + 8 * sqrt(geom_mean(beta) * lamda * t)) + 1
-    ):
-        sum += poisson.pmf(k, lamda * t) * f_jk(j, k, beta)
-    return sum
+    p: float = mu / sigma2
+    r: float = mu * p / (1 - p)
+    return float(nbinom.pmf(k, r, p))
 
 
 @cache
 def IL_pmf(
     j: int,
-    t: int,
-    lamda: float,
-    beta: float,
+    mu: float,
+    sigma2: float,
     R: int,
     Q: int,
 ) -> float:
     """
-    PMF of inventory level in t periods
+    PMF of lead time inventory level
     """
     sum: float = 0
     for k in range(max(R + 1, j), R + Q + 1):
-        sum += Dt_pmf(k - j, t, lamda, beta)
+        sum += Dt_pmf(k - j, mu, sigma2)
 
     return 1 / Q * sum
 
 
 @cache
 def fill_rate(
-    t: int,
-    lamda: float,
-    beta: float,
+    mu: float,
+    sigma2: float,
     R: int,
     Q: int,
 ) -> float:
     """
     Fill rate S2 given params
     """
-    max_demand: int = int(lamda * t + 8 * sqrt(lamda * t)) + 1
+    max_demand: int = int(mu + 8 * sqrt(sigma2))
     max_IL: int = R + Q + 1
 
     numerator: float = 0.0
+    denominator: float = 0.0
+
+    dt_probs: list[float] = [Dt_pmf(k, mu, sigma2) for k in range(max_demand)]
+    il_probs: list[float] = [IL_pmf(j, mu, sigma2, R, Q) for j in range(max_IL)]
     for k in range(max_demand):
-        dt: float = Dt_pmf(k, t, lamda, beta)
+        denominator += k * Dt_pmf(k, mu, sigma2)
         for j in range(max_IL):
-            numerator += min(j, k) * dt * IL_pmf(j, t, lamda, beta, R, Q)
-    return numerator / (lamda * t * geom_mean(beta))
+            numerator += min(j, k) * dt_probs[k] * il_probs[j]
+    return numerator / denominator
 
 
 class InvStratCompPois:
@@ -262,30 +213,29 @@ class InvStratCompPois:
         Use as order quantity the max of 1 day of demand and the MOQ
         Optimal R is as low as possible s.t. we have at least min_fill_rate
         """
-        mu: float = self.model.forecast()
-        sigma: float = sqrt(mean(r * r for r in self.model.residuals))
-        beta: float = 1 - (2 / (1 + sigma**2 / mu))
-        lamda: float = mu * (1 - beta)
+        mu: float = self.model.forecast() * self.article.lead_time
+        sigma2: float = self.article.lead_time * mean(
+            r * r for r in self.model.residuals
+        )
 
         self.Q = max(self.article.min_order_quantity, ceil(mu))
 
         # Bounds as in the book, ensure upper bound is enough to achieve min_fill_rate
         lower: int = -self.Q
-        upper: int = ceil(mu + 10 * sigma)
+        upper: int = ceil(mu + 10 * sqrt(sigma2))
 
-        while (
-            fill_rate(self.article.lead_time, lamda, beta, upper, self.Q)
-            < self.min_fill_rate
-        ):
-            upper += ceil(10 * sigma)
+        while fill_rate(mu, sigma2, upper, self.Q) < self.min_fill_rate:
+            upper += ceil(10 * sqrt(sigma2))
+
+        print(f"Bounds before bisection: ({lower, upper})")
 
         # Bisection
-        for i in range(50):
+        for _ in range(50):
             if upper - lower <= 1:
                 break
-            mid: int = ceil((lower + upper) // 2)
+            mid: int = ceil((lower + upper) / 2)
 
-            service = fill_rate(self.article.lead_time, lamda, beta, mid, self.Q)
+            service = fill_rate(mu, sigma2, mid, self.Q)
 
             if service < self.min_fill_rate:
                 lower = mid
@@ -293,3 +243,5 @@ class InvStratCompPois:
                 upper = mid
 
         self.R = upper
+
+        print(f"Optimized (R,Q) = ({self.R},{self.Q})")

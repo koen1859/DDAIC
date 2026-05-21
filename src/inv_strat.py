@@ -138,6 +138,8 @@ class InvStratNormal:
         self.R = ceil(upper)
 
 
+# Question is whether the cache decorator works for functions that take float as argument,
+# due to floating point precision
 @cache
 def Dt_pmf(k: int, mu: float, sigma2: float) -> float:
     """
@@ -186,7 +188,7 @@ def fill_rate(
     dt_probs: list[float] = [Dt_pmf(k, mu, sigma2) for k in range(max_demand)]
     il_probs: list[float] = [IL_pmf(j, mu, sigma2, R, Q) for j in range(max_IL)]
     for k in range(max_demand):
-        denominator += k * Dt_pmf(k, mu, sigma2)
+        denominator += k * dt_probs[k]
         for j in range(max_IL):
             numerator += min(j, k) * dt_probs[k] * il_probs[j]
     return numerator / denominator
@@ -222,10 +224,7 @@ class InvStratCompPois:
 
         # Bounds as in the book, ensure upper bound is enough to achieve min_fill_rate
         lower: int = -self.Q
-        upper: int = ceil(mu + 10 * sqrt(sigma2))
-
-        while fill_rate(mu, sigma2, upper, self.Q) < self.min_fill_rate:
-            upper += ceil(10 * sqrt(sigma2))
+        upper: int = ceil(mu + 30 * sqrt(sigma2))
 
         # Bisection
         for _ in range(50):
@@ -241,3 +240,7 @@ class InvStratCompPois:
                 upper = mid
 
         self.R = upper
+
+        # Take into account the multiplier
+        self.Q /= self.article.demand_multiplier
+        self.R /= self.article.demand_multiplier

@@ -1,18 +1,21 @@
-from math import ceil
-from plot import plot_demand, plot_inventory_strategy
 from load_data import load_data, Article
 from forecasting import ExponentialSmoothing, Croston
 from inv_strat import InvStratNormal, InvStratCompPois
-import multiprocessing
+from plot import plot_demand, plot_inventory_strategy
+
+from math import ceil
 import polars as pl
-import sys
+from multiprocessing import Pool, Manager, Queue
+from rich.live import Live
+from rich.table import Table
+from rich.progress import Progress, BarColumn, TextColumn
+from rich.console import Group
+import time
 
 GLOBAL_TARGET: float = 0.98
 
 
-def process_article(args: tuple[Article, float]) -> dict:
-    article: Article = args[0]
-    min_fill_rate: float = args[1]
+def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dict:
     if article.slow_mover:
         model = Croston(article)
         inv_strat: InvStratCompPois = InvStratCompPois(article, model, min_fill_rate)
@@ -51,7 +54,7 @@ def process_article(args: tuple[Article, float]) -> dict:
             on_hand -= fullfilled
             backorders -= fullfilled
 
-        demand = article.demand[i]
+        demand = article.true_demand[i]
 
         if demand > 0:
             # Update models only on days with a positive demand,
@@ -67,7 +70,7 @@ def process_article(args: tuple[Article, float]) -> dict:
                 inv_strat.optimize()
         days_since_update += 1
 
-        forecasts.append(model.forecast())
+        forecasts.append(model.forecast() / article.demand_multiplier)
 
         # Log results from test period
         if in_test_period:
@@ -95,6 +98,9 @@ def process_article(args: tuple[Article, float]) -> dict:
         R_list.append(inv_strat.R)
         Q_list.append(inv_strat.Q)
 
+        if i % 10 == 0:
+            queue.put({"id": article.id, "progress": (i / len(article.dates)) * 100})
+
     plot_demand(article, forecasts, first_test_index)
     plot_inventory_strategy(
         article,
@@ -104,6 +110,8 @@ def process_article(args: tuple[Article, float]) -> dict:
         Q_list,
         first_test_index,
     )
+
+    queue.put({"id": article.id, "done": True})
 
     return {
         "article_id": article.id,
@@ -118,38 +126,57 @@ def process_article(args: tuple[Article, float]) -> dict:
 
 def main():
     articles: list[Article] = load_data()
+    min_fill_rate: float = 0.8
 
-    with multiprocessing.Pool() as pool:
-        min_fill_rate: float = GLOBAL_TARGET
-        args = [(a, min_fill_rate) for a in articles]
+    manager = Manager()
+    queue = manager.Queue()
 
-        raw_results = []
-        total_articles = len(args)
+    active_tasks = {}
 
-        # Use imap_unordered to catch results as they finish
-        for i, result in enumerate(pool.imap_unordered(process_article, args), 1):
-            raw_results.append(result)
+    main_progress = Progress(
+        TextColumn("[bold blue]Global Progress"),
+        BarColumn(),
+        "[progress.percentage]{task.percentage:>3.0f}%",
+    )
+    task_id = main_progress.add_task("Total", total=len(articles))
 
-            # Progress bar
-            percent = (i / total_articles) * 100
-            bar_length = 40
-            filled_length = int(bar_length * i // total_articles)
-            bar = "█" * filled_length + "-" * (bar_length - filled_length)
-            sys.stdout.write(
-                f"\rProgress: |{bar}| {percent:.1f}% ({i}/{total_articles})"
-            )
-            sys.stdout.flush()
+    with Live(main_progress, refresh_per_second=10) as live:
+        with Pool() as pool:
+            raw_results = [
+                pool.apply_async(process_article, (a, min_fill_rate, queue))
+                for a in articles
+            ]
 
-        # Convert the collected list of dicts to a df
-        results: pl.DataFrame = pl.DataFrame(raw_results)
-        results.write_csv("../results/results.csv")
+            completed: int = 0
+            while completed < len(articles):
+                while not queue.empty():
+                    msg = queue.get()
+                    if "done" in msg:
+                        completed += 1
+                        main_progress.update(task_id, advance=1)
+                        if msg["id"] in active_tasks:
+                            del active_tasks[msg["id"]]
+                    else:
+                        active_tasks[msg["id"]] = msg["progress"]
 
-        print(
-            f"Global fill rate achieved: {
-                sum(results['demand_satisfied_from_stock'])
-                / sum(results['total_demand'])
-            }"
-        )
+                table = Table(title="Active Workers")
+                table.add_column("Article ID")
+                table.add_column("Progress")
+                for art_id, prog in active_tasks.items():
+                    table.add_row(str(art_id), f"{prog:.1f}%")
+
+                live.update(Group(main_progress, table))
+                time.sleep(0.1)
+
+    # Convert the collected list of dicts to a df
+    results: pl.DataFrame = pl.DataFrame([res.get() for res in raw_results])
+    results.write_csv("../results/results.csv")
+
+    print(
+        f"Global fill rate achieved: {
+            sum(results['demand_satisfied_from_stock']) / sum(results['total_demand'])
+        }"
+    )
 
 
 if __name__ == "__main__":

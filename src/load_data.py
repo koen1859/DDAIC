@@ -45,11 +45,24 @@ class Article:
         self.test_dates = [d for d in self.dates if d.year == 2018]
         self.train_demand = self.demand[: len(self.train_dates)]
         self.test_demand = self.demand[len(self.train_dates) :]
+        self.true_demand: list[int] = self.demand
 
         # Find if slow mover or not (0 demand more than 20% of time)
         self.slow_mover: bool = (
             sum(1 for d in self.train_demand if d != 0) / len(self.train_demand)
         ) < 0.8
+
+        treshold = 100
+        self.demand_multiplier: float = 1.0  # Multiplier for demand since we divide large demands for slow mover to speed up program
+        if self.slow_mover and max(self.train_demand) > treshold:
+            self.demand = [int(round(d / 100)) for d in self.demand]
+            self.train_demand = [int(round(d / 100)) for d in self.train_demand]
+            self.test_demand = [int(round(d / 100)) for d in self.test_demand]
+            self.demand_multiplier = 1.0 / 100.0
+
+        self.min_order_quantity = round(
+            self.demand_multiplier * self.min_order_quantity
+        )
 
     # Method to print class for debugging
     def __str__(self):
@@ -66,6 +79,14 @@ def process_article(args) -> Article | None:
     if not any_demand:
         return None
     return Article(info_row, demand_row, dates)
+
+
+def article_valid(article: Article) -> bool:
+    if article.lead_time > len(article.train_demand):
+        return False
+    if not any(d > 0 for d in article.test_demand):
+        return False
+    return True
 
 
 def load_data() -> list[Article]:
@@ -92,7 +113,5 @@ def load_data() -> list[Article]:
     with multiprocessing.Pool() as pool:
         results = list(pool.map(process_article, args_list))
 
-    articles = [
-        a for a in results if a is not None and any(d != 0 for d in a.test_demand)
-    ]
+    articles = [a for a in results if a is not None and article_valid(a)]
     return articles

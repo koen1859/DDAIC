@@ -21,6 +21,8 @@
             polars
             fastexcel
             scipy
+            tqdm
+            rich
           ]);
     in {
       devShells.default = pkgs.mkShell {

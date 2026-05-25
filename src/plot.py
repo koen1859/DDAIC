@@ -45,6 +45,7 @@ def plot_inventory_strategy(
     R: list[int],
     Q: list[int],
     first_test_index: int,
+    achieved_fill_rate: float,
 ):
     # Plot inventory levels and policy parameters
     plt.figure(figsize=(12, 6))
@@ -75,7 +76,7 @@ def plot_inventory_strategy(
         label="Test Period Start",
     )
 
-    plt.title(f"{article.name} - Inventory Strategy Over Time")
+    plt.title(f"{article.name}: Fill Rate: {achieved_fill_rate}")
     plt.xlabel("Date")
     plt.ylabel("Units")
     plt.legend()

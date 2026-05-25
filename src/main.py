@@ -12,7 +12,9 @@ from rich.progress import Progress, BarColumn, TextColumn
 from rich.console import Group
 import time
 
-GLOBAL_TARGET: float = 0.98
+GLOBAL_TARGET: float = 0.90
+INITIAL_TARGET: float = 0.999999
+MAX_TARGET: float = 0.999999
 
 
 def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dict:
@@ -109,6 +111,7 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
         R_list,
         Q_list,
         first_test_index,
+        demand_satisfied_from_stock / total_demand,
     )
 
     queue.put({"id": article.id, "done": True})
@@ -124,9 +127,21 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
     }
 
 
-def main():
+def article_fill_rate(row) -> float:
+    return row["demand_satisfied_from_stock"] / row["total_demand"]
+
+
+def global_fill_rate(results: pl.DataFrame) -> float:
+    return sum(results["demand_satisfied_from_stock"]) / sum(results["total_demand"])
+
+
+def unmet_demand(row) -> float:
+    return row["total_demand"] - row["demand_satisfied_from_stock"]
+
+
+def initial_optimization():
     articles: list[Article] = load_data()
-    min_fill_rate: float = 0.8
+    article_targets = {article.id: INITIAL_TARGET for article in articles}
 
     manager = Manager()
     queue = manager.Queue()
@@ -134,7 +149,9 @@ def main():
     active_tasks = {}
 
     main_progress = Progress(
-        TextColumn("[bold blue]Global Progress"),
+        TextColumn(
+            f"[bold blue]Initial Optimization with target fill rate of {INITIAL_TARGET}"
+        ),
         BarColumn(),
         "[progress.percentage]{task.percentage:>3.0f}%",
     )
@@ -143,8 +160,10 @@ def main():
     with Live(main_progress, refresh_per_second=10) as live:
         with Pool() as pool:
             raw_results = [
-                pool.apply_async(process_article, (a, min_fill_rate, queue))
-                for a in articles
+                pool.apply_async(
+                    process_article, (article, article_targets[article.id], queue)
+                )
+                for article in articles
             ]
 
             completed: int = 0
@@ -168,15 +187,75 @@ def main():
                 live.update(Group(main_progress, table))
                 time.sleep(0.1)
 
-    # Convert the collected list of dicts to a df
-    results: pl.DataFrame = pl.DataFrame([res.get() for res in raw_results])
-    results.write_csv("../results/results.csv")
+    return articles, article_targets, raw_results
 
-    print(
-        f"Global fill rate achieved: {
-            sum(results['demand_satisfied_from_stock']) / sum(results['total_demand'])
-        }"
-    )
+
+def main():
+    articles: list[Article]
+    articles, article_targets, raw_results = initial_optimization()
+
+    results_dict = {res.get()["article_id"]: res.get() for res in raw_results}
+    results: pl.DataFrame = pl.DataFrame([res.get() for res in raw_results])
+    current_global: float = global_fill_rate(results)
+
+    print(f"Global fill rate achieved after initial optimiztion: {current_global:.4f}")
+    manager = Manager()
+    queue = manager.Queue()
+
+    while current_global < GLOBAL_TARGET:
+        candidate_rows = [
+            row
+            for row in results_dict.values()
+            if abs(row["target_fill_rate"] - MAX_TARGET) > 1e-9
+        ]
+
+        if not candidate_rows:
+            print("No more articles can be improved.")
+            break
+
+        # Find worst article
+        worst_row = max(
+            candidate_rows,
+            key=unmet_demand,
+        )
+
+        worst_id = worst_row["article_id"]
+
+        old_rate = article_fill_rate(worst_row)
+
+        # Increase target for this article
+        article_targets[worst_id] = min(
+            (article_targets[worst_id] + MAX_TARGET) / 2,
+            MAX_TARGET,
+        )
+
+        # Find original article object
+        article = next(a for a in articles if a.id == worst_id)
+
+        print(
+            f"Reprocessing article {worst_id} (achieved fill rate={old_rate:.4f}, new target={article_targets[worst_id]})"
+        )
+
+        # Reprocess only this article
+        updated_result = process_article(
+            article,
+            article_targets[worst_id],
+            queue,
+        )
+
+        # Replace previous result
+        results_dict[worst_id] = updated_result
+
+        # Recompute global
+        results = pl.DataFrame(list(results_dict.values()))
+
+        current_global = global_fill_rate(results)
+
+        print(f"New global fill rate: {current_global:.4f}")
+
+    print(f"Reached global target: {current_global:.4f}")
+
+    results.write_csv("../results/results.csv")
 
 
 if __name__ == "__main__":

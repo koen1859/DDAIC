@@ -179,7 +179,7 @@ def fill_rate(
     """
     Fill rate S2 given params
     """
-    max_demand: int = int(mu + 8 * sqrt(sigma2))
+    max_demand: int = ceil(mu + 8 * sqrt(sigma2))
     max_IL: int = R + Q + 1
 
     numerator: float = 0.0

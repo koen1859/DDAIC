@@ -114,7 +114,10 @@ class InvStratNormal:
         Use as order quantity the max of 1 day of demand and the MOQ
         Optimal R is as low as possible s.t. we have at least min_fill_rate
         """
-        self.Q = max(self.article.min_order_quantity, int(self.model.forecast()))
+        self.Q = max(
+            self.article.min_order_quantity,
+            int(self.model.forecast() / self.article.lead_time),
+        )
         mu, sigma = self.lead_time_demand()
 
         # Bounds as in the book, ensure upper bound is enough to achieve min_fill_rate
@@ -214,7 +217,9 @@ class InvStratCompPois:
         self.R: int = 0
 
         # At least MOQ and at least avg daily demand
-        self.Q: int = max(article.min_order_quantity, ceil(model.forecast()))
+        self.Q: int = max(
+            article.min_order_quantity, ceil(model.forecast() / self.article.lead_time)
+        )
 
     def optimize(self) -> None:
         """

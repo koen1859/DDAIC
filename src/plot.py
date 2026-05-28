@@ -12,7 +12,7 @@ def plot_demand(article: Article, forecasts: list[float], first_test_index: int)
     if article.slow_mover:
         label = "Forecasted demand (Croston)"
     else:
-        label = "Forecasted demand (Exponential smoothing)"
+        label = "Forecasted demand (Winter's Trend Seasonal)"
     plt.plot(
         article.dates,
         forecasts,

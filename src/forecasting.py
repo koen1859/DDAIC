@@ -42,7 +42,9 @@ class ExponentialSmoothing:
             self.a = (1 - self.alpha) * self.a + self.alpha * x
             self.current_idx += 1
 
-    def forecast(self, days_forward: int = 1) -> float:
+    def forecast(self, days_forward: int | None = None) -> float:
+        if days_forward is None:
+            days_forward = self.article.lead_time
         return self.a * days_forward
 
 
@@ -166,9 +168,9 @@ class WintersTrendSeasonal:
 
             self.current_idx += 1
 
-    def forecast(self, days_forward: int = 1) -> float:
-        if days_forward <= 0:
-            return 0.0
+    def forecast(self, days_forward: int | None = None) -> float:
+        if days_forward is None:
+            days_forward = self.article.lead_time
 
         total_forecast = 0.0
 
@@ -252,5 +254,7 @@ class Croston:
 
             self.current_idx += 1
 
-    def forecast(self, days_forward: int = 1) -> float:
+    def forecast(self, days_forward: int | None = None) -> float:
+        if days_forward is None:
+            days_forward = self.article.lead_time
         return self.a * days_forward

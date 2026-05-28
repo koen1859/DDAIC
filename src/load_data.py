@@ -47,10 +47,10 @@ class Article:
         self.test_demand = self.demand[len(self.train_dates) :]
         self.true_demand: list[int] = self.demand
 
-        # Find if slow mover or not (0 demand more than 50% of time)
+        # Find if slow mover or not (0 demand more than 80% of time)
         self.slow_mover: bool = (
             sum(1 for d in self.train_demand if d != 0) / len(self.train_demand)
-        ) < 0.5
+        ) < 0.8
 
         treshold = 100
         self.demand_multiplier: float = 1.0  # Multiplier for demand since we divide large demands for slow mover to speed up program

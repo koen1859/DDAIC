@@ -12,8 +12,8 @@ from rich.progress import Progress, BarColumn, TextColumn
 from rich.console import Group
 import time
 
-GLOBAL_TARGET: float = 0.9
-INITIAL_TARGET: float = 0.999999999999
+GLOBAL_TARGET: float = 0.95
+INITIAL_TARGET: float = 0.5
 MAX_TARGET: float = 0.9999999999999
 
 
@@ -68,11 +68,11 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
                 if days_since_update > 30:
                     inv_strat.optimize()
                     days_since_update = 0
+                days_since_update += 1
             else:
                 inv_strat.optimize()
-        days_since_update += 1
 
-        forecasts.append(model.forecast() / article.demand_multiplier)
+        forecasts.append(model.forecast(1) / article.demand_multiplier)
 
         # Log results from test period
         if in_test_period:
@@ -216,7 +216,7 @@ def iterative_optimization(
 
                 # Find 160 worst articles to reprocess
                 worst_rows = sorted(candidate_rows, key=unmet_demand, reverse=True)[
-                    :160
+                    :1600
                 ]
                 worst_articles: list[Article] = []
                 for row in worst_rows:

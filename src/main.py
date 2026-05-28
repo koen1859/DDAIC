@@ -1,5 +1,5 @@
 from load_data import load_data, Article
-from forecasting import ExponentialSmoothing, Croston
+from forecasting import ExponentialSmoothing, Croston, WintersTrendSeasonal
 from inv_strat import InvStratNormal, InvStratCompPois
 from plot import plot_demand, plot_inventory_strategy
 
@@ -12,9 +12,9 @@ from rich.progress import Progress, BarColumn, TextColumn
 from rich.console import Group
 import time
 
-GLOBAL_TARGET: float = 0.90
-INITIAL_TARGET: float = 0.999999
-MAX_TARGET: float = 0.999999
+GLOBAL_TARGET: float = 0.9
+INITIAL_TARGET: float = 0.999999999999
+MAX_TARGET: float = 0.9999999999999
 
 
 def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dict:
@@ -22,7 +22,7 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
         model = Croston(article)
         inv_strat: InvStratCompPois = InvStratCompPois(article, model, min_fill_rate)
     else:
-        model = ExponentialSmoothing(article)
+        model = WintersTrendSeasonal(article)
         inv_strat: InvStratNormal = InvStratNormal(article, model, min_fill_rate)
 
     backorders: int = 0
@@ -139,10 +139,7 @@ def unmet_demand(row) -> float:
     return row["total_demand"] - row["demand_satisfied_from_stock"]
 
 
-def initial_optimization():
-    articles: list[Article] = load_data()
-    article_targets = {article.id: INITIAL_TARGET for article in articles}
-
+def initial_optimization(articles: list[Article], article_targets: dict):
     manager = Manager()
     queue = manager.Queue()
 
@@ -187,73 +184,119 @@ def initial_optimization():
                 live.update(Group(main_progress, table))
                 time.sleep(0.1)
 
-    return articles, article_targets, raw_results
+    return raw_results
+
+
+def iterative_optimization(
+    articles: list[Article],
+    article_targets: dict,
+    results_dict: dict,
+    current_global: float,
+):
+    """Run iterative optimization with progress display"""
+    manager = Manager()
+    queue = manager.Queue()
+    active_tasks = {}
+
+    with Live(refresh_per_second=10) as live:
+        with Pool() as pool:
+            iteration: int = 0
+            while current_global < GLOBAL_TARGET:
+                iteration += 1
+
+                candidate_rows = [
+                    row
+                    for row in results_dict.values()
+                    if abs(row["target_fill_rate"] - MAX_TARGET) > 1e-9
+                ]
+
+                if not candidate_rows:
+                    print("No more articles can be improved.")
+                    break
+
+                # Find 160 worst articles to reprocess
+                worst_rows = sorted(candidate_rows, key=unmet_demand, reverse=True)[
+                    :160
+                ]
+                worst_articles: list[Article] = []
+                for row in worst_rows:
+                    id = row["article_id"]
+
+                    # Increase target for this article
+                    article_targets[id] = min(
+                        (article_targets[id] + MAX_TARGET) / 2,
+                        MAX_TARGET,
+                    )
+
+                    # Find original article object
+                    article = next(a for a in articles if a.id == id)
+                    worst_articles.append(article)
+
+                raw_results = [
+                    pool.apply_async(
+                        process_article, (article, article_targets[article.id], queue)
+                    )
+                    for article in worst_articles
+                ]
+
+                completed: int = 0
+                while completed < len(worst_articles):
+                    while not queue.empty():
+                        msg = queue.get()
+                        if "done" in msg:
+                            completed += 1
+                            if msg["id"] in active_tasks:
+                                del active_tasks[msg["id"]]
+                        else:
+                            active_tasks[msg["id"]] = msg["progress"]
+
+                    main_progress = Progress(
+                        TextColumn(
+                            f"[bold blue]Iterative Improvement - Iteration {iteration} - "
+                            f"Global Fill Rate: {current_global:.4f} / {GLOBAL_TARGET:.4f}"
+                        ),
+                    )
+                    main_progress.add_task("", total=1)
+
+                    table = Table(title="Active Workers")
+                    table.add_column("Article ID")
+                    table.add_column("Progress")
+                    for art_id, prog in active_tasks.items():
+                        table.add_row(str(art_id), f"{prog:.1f}%")
+
+                    live.update(Group(main_progress, table))
+                    time.sleep(0.1)
+
+                for res in raw_results:
+                    result = res.get()
+                    results_dict[result["article_id"]] = result
+
+                current_global = global_fill_rate(
+                    pl.DataFrame(list(results_dict.values()))
+                )
+
+    return current_global
 
 
 def main():
-    articles: list[Article]
-    articles, article_targets, raw_results = initial_optimization()
+    articles: list[Article] = load_data()
+    article_targets = {article.id: INITIAL_TARGET for article in articles}
+
+    raw_results = initial_optimization(articles, article_targets)
 
     results_dict = {res.get()["article_id"]: res.get() for res in raw_results}
     results: pl.DataFrame = pl.DataFrame([res.get() for res in raw_results])
     current_global: float = global_fill_rate(results)
 
-    print(f"Global fill rate achieved after initial optimiztion: {current_global:.4f}")
-    manager = Manager()
-    queue = manager.Queue()
+    print(
+        f"\nGlobal fill rate achieved after initial optimiztion: {current_global:.4f}"
+    )
 
-    while current_global < GLOBAL_TARGET:
-        candidate_rows = [
-            row
-            for row in results_dict.values()
-            if abs(row["target_fill_rate"] - MAX_TARGET) > 1e-9
-        ]
+    current_global = iterative_optimization(
+        articles, article_targets, results_dict, current_global
+    )
 
-        if not candidate_rows:
-            print("No more articles can be improved.")
-            break
-
-        # Find worst article
-        worst_row = max(
-            candidate_rows,
-            key=unmet_demand,
-        )
-
-        worst_id = worst_row["article_id"]
-
-        old_rate = article_fill_rate(worst_row)
-
-        # Increase target for this article
-        article_targets[worst_id] = min(
-            (article_targets[worst_id] + MAX_TARGET) / 2,
-            MAX_TARGET,
-        )
-
-        # Find original article object
-        article = next(a for a in articles if a.id == worst_id)
-
-        print(
-            f"Reprocessing article {worst_id} (achieved fill rate={old_rate:.4f}, new target={article_targets[worst_id]})"
-        )
-
-        # Reprocess only this article
-        updated_result = process_article(
-            article,
-            article_targets[worst_id],
-            queue,
-        )
-
-        # Replace previous result
-        results_dict[worst_id] = updated_result
-
-        # Recompute global
-        results = pl.DataFrame(list(results_dict.values()))
-
-        current_global = global_fill_rate(results)
-
-        print(f"New global fill rate: {current_global:.4f}")
-
-    print(f"Reached global target: {current_global:.4f}")
+    print(f"\nReached global target: {current_global:.4f}")
 
     results.write_csv("../results/results.csv")
 

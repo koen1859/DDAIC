@@ -1,10 +1,10 @@
-from forecasting import ExponentialSmoothing, Croston
+from forecasting import ExponentialSmoothing, Croston, WintersTrendSeasonal
 from load_data import Article
 
 from scipy.stats import nbinom
 from statistics import NormalDist, mean
 from math import sqrt, ceil
-from functools import cache
+import numpy as np
 
 normal = NormalDist()
 
@@ -34,19 +34,22 @@ class InvStratNormal:
     def __init__(
         self,
         article: Article,
-        model: ExponentialSmoothing,
+        model: ExponentialSmoothing | WintersTrendSeasonal | Croston,
         min_fill_rate: float,
     ) -> None:
         self.min_fill_rate: float = min_fill_rate
         self.article: Article = article
-        self.model: ExponentialSmoothing | Croston = model
+        self.model: ExponentialSmoothing | Croston | WintersTrendSeasonal = model
         self.R: int = 0
 
-        # At least MOQ and at least avg daily demand
-        self.Q: int = max(article.min_order_quantity, ceil(model.forecast()))
+        # At least MOQ and at least avg daily demand over the lead time
+        self.Q: int = max(
+            article.min_order_quantity,
+            ceil(model.forecast(article.lead_time) / article.lead_time),
+        )
 
     def lead_time_demand(self) -> tuple[float, float]:
-        mu: float = self.article.lead_time * self.model.forecast()
+        mu: float = self.model.forecast(self.article.lead_time)
         sigma2: float = self.article.lead_time * mean(
             r * r for r in self.model.residuals
         )
@@ -138,9 +141,6 @@ class InvStratNormal:
         self.R = ceil(upper)
 
 
-# Question is whether the cache decorator works for functions that take float as argument,
-# due to floating point precision
-@cache
 def Dt_pmf(k: int, mu: float, sigma2: float) -> float:
     """
     PMF of lead time demand
@@ -151,7 +151,6 @@ def Dt_pmf(k: int, mu: float, sigma2: float) -> float:
     return float(nbinom.pmf(k, r, p))
 
 
-@cache
 def IL_pmf(
     j: int,
     mu: float,
@@ -162,14 +161,11 @@ def IL_pmf(
     """
     PMF of lead time inventory level
     """
-    sum: float = 0
-    for k in range(max(R + 1, j), R + Q + 1):
-        sum += Dt_pmf(k - j, mu, sigma2)
-
-    return 1 / Q * sum
+    k_arr = np.arange(max(R + 1, j), R + Q + 1)
+    pmf = np.array([Dt_pmf(k - j, mu, sigma2) for k in k_arr])
+    return 1 / Q * np.sum(pmf)
 
 
-@cache
 def fill_rate(
     mu: float,
     sigma2: float,
@@ -182,16 +178,27 @@ def fill_rate(
     max_demand: int = ceil(mu + 8 * sqrt(sigma2))
     max_IL: int = R + Q + 1
 
-    numerator: float = 0.0
-    denominator: float = 0.0
+    dt_probs = np.array([Dt_pmf(k, mu, sigma2) for k in range(max_demand)])
+    il_probs = []
+    for j in range(max_IL):
+        min_k = max(R + 1, j)
+        max_k = R + Q + 1
 
-    dt_probs: list[float] = [Dt_pmf(k, mu, sigma2) for k in range(max_demand)]
-    il_probs: list[float] = [IL_pmf(j, mu, sigma2, R, Q) for j in range(max_IL)]
-    for k in range(max_demand):
-        denominator += k * dt_probs[k]
-        for j in range(max_IL):
-            numerator += min(j, k) * dt_probs[k] * il_probs[j]
-    return numerator / denominator
+        pmf_sum = np.sum(dt_probs[min_k - j : max_k - j])
+        il_probs.append(pmf_sum / Q)
+    il_probs = np.array(il_probs)
+
+    k_arr = np.arange(max_demand)
+    denominator = np.sum(k_arr * dt_probs)
+
+    k_arr = k_arr[np.newaxis, :]
+    j_arr = np.arange(max_IL)[:, np.newaxis]
+    dt_arr = dt_probs[np.newaxis, :]
+    il_arr = il_probs[:, np.newaxis]
+
+    numerator = np.sum(np.minimum(j_arr, k_arr) * dt_arr * il_arr)
+
+    return float(numerator / denominator)
 
 
 class InvStratCompPois:
@@ -215,7 +222,7 @@ class InvStratCompPois:
         Use as order quantity the max of 1 day of demand and the MOQ
         Optimal R is as low as possible s.t. we have at least min_fill_rate
         """
-        mu: float = self.model.forecast() * self.article.lead_time
+        mu: float = self.model.forecast(self.article.lead_time)
         sigma2: float = self.article.lead_time * mean(
             r * r for r in self.model.residuals
         )

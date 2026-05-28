@@ -140,7 +140,7 @@ article_id,article_name,total_demand,demand_satisfied_from_stock,achieved_fill_r
 1617,"Glasses (drink, beer, wine etc)",1191,1191,1.0,0.999999,false
 1618,"Glasses (drink, beer, wine etc)",13542,13328,0.9841973120661646,0.999999,false
 1619,Residential odors,233,233,1.0,0.999999,false
-1621,Waste bins,2342,1663,0.7100768573868489,0.999999,true
+1621,Waste bins,2342,1790,0.7643040136635354,0.999999,true
 1623,Kitchen helpers,15885,15885,1.0,0.999999,false
 1624,Cutlery,24225,22756,0.939360165118679,0.999999,false
 1626,Drying racks,13613,13613,1.0,0.999999,false
@@ -402,7 +402,7 @@ article_id,article_name,total_demand,demand_satisfied_from_stock,achieved_fill_r
 2606,Personal care,134990,95404,0.7067486480480035,0.999999,false
 2608,Coffee makers and kettles,9533,9533,1.0,0.999999,false
 2613,Cooking pans,1807,1617,0.8948533480907581,0.999999,false
-2634,Candles & Tealights,7570,3143,0.4151915455746367,0.999999,true
+2634,Candles & Tealights,7570,1231,0.16261558784676355,0.999999,true
 2637,Vases,1740,1740,1.0,0.999999,false
 2645,Partyfun,13099,13010,0.9932055882128407,0.999999,false
 2646,Photo frames & albums,12645,12645,1.0,0.999999,false
@@ -633,7 +633,7 @@ article_id,article_name,total_demand,demand_satisfied_from_stock,achieved_fill_r
 3465,Tableware,37656,35911,0.9536594433821968,0.999999,false
 3467,Cutlery,687,687,1.0,0.999999,false
 3468,Tableware,698,698,1.0,0.999999,false
-3469,Baby / Toddler,850,814,0.9576470588235294,0.999999,true
+3469,Baby / Toddler,850,850,1.0,0.999999,true
 3471,Cutlery,3263,3263,1.0,0.999999,false
 3473,Serve and present,2628,2628,1.0,0.999999,false
 3474,Cutlery,3624,3624,1.0,0.999999,false
@@ -1128,11 +1128,11 @@ article_id,article_name,total_demand,demand_satisfied_from_stock,achieved_fill_r
 5451,Party lights,10105,10105,1.0,0.999999,false
 5457,Photo frames & albums,1960,1960,1.0,0.999999,false
 5458,Stationary,20388,20388,1.0,0.999999,false
-5462,Ironing boards,6969,3196,0.45860238197732817,0.999999,true
+5462,Ironing boards,6969,6147,0.8820490744726647,0.999999,true
 5467,Teletoys,442,442,1.0,0.999999,false
 5468,Tea and coffee,2119,2119,1.0,0.999999,false
 5469,Cooking books,214,214,1.0,0.999999,false
-5472,Bath textiles and bath mats,3683,1852,0.5028509367363563,0.999999,true
+5472,Bath textiles and bath mats,3683,2998,0.8140103176758078,0.999999,true
 5474,Hobby and creative,2211,2211,1.0,0.999999,false
 5484,Wash treatment and accessories,8770,6341,0.7230330672748004,0.999999,false
 5488,Bakeware,31413,30502,0.9709992678190558,0.999999,false
@@ -1201,7 +1201,7 @@ article_id,article_name,total_demand,demand_satisfied_from_stock,achieved_fill_r
 5653,Pan sets,1992,1992,1.0,0.999999,false
 5660,Personal care,1930,1930,1.0,0.999999,false
 5677,Foods,125,125,1.0,0.999999,false
-5709,"TV, Audio & Video",5730,1818,0.3172774869109948,0.999999,true
+5709,"TV, Audio & Video",5730,3330,0.581151832460733,0.999999,true
 5710,Drink & food To Go,7956,7190,0.903720462543992,0.999999,false
 5713,Electric personal care,20758,18423,0.8875132479044224,0.999999,false
 5725,"Cloths, mops, sponges and brush",16396,16396,1.0,0.999999,false
@@ -1234,7 +1234,7 @@ article_id,article_name,total_demand,demand_satisfied_from_stock,achieved_fill_r
 5840,Construction,406,406,1.0,0.999999,false
 5843,Kitchen tools,1089,1089,1.0,0.999999,false
 5845,Kitchen tools,1017,1017,1.0,0.999999,false
-5848,Bath textiles and bath mats,3905,1886,0.4829705505761844,0.999999,true
+5848,Bath textiles and bath mats,3905,2947,0.754673495518566,0.999999,true
 5849,Tableware,1811,1811,1.0,0.999999,false
 5850,Tableware,1482,1482,1.0,0.999999,false
 5851,Hobby and creative,930,930,1.0,0.999999,false
@@ -1310,7 +1310,7 @@ article_id,article_name,total_demand,demand_satisfied_from_stock,achieved_fill_r
 6082,Electric personal care,5430,5430,1.0,0.999999,false
 6095,Construction,597,597,1.0,0.999999,false
 6098,Batteries,309,309,1.0,0.999999,false
-6107,Ironing,982,858,0.8737270875763747,0.999999,true
+6107,Ironing,982,982,1.0,0.999999,true
 6108,Ironing,3357,2803,0.8349717009234435,0.999999,false
 6109,Hobby and creative,1146,1146,1.0,0.999999,false
 6139,Foods,795,795,1.0,0.999999,false
@@ -1361,7 +1361,7 @@ article_id,article_name,total_demand,demand_satisfied_from_stock,achieved_fill_r
 6309,Other Holidays,30035,19661,0.6546029632095888,0.999999,false
 6332,Photo frames & albums,1483,1483,1.0,0.999999,false
 6334,Photo frames & albums,16563,16563,1.0,0.999999,false
-6347,Window and squeegees,2949,1756,0.5954560868090878,0.999999,true
+6347,Window and squeegees,2949,2933,0.9945744320108512,0.999999,true
 6349,Store kitchen,868,824,0.9493087557603687,0.999999,false
 6351,Tableware,6217,4186,0.6733151037477884,0.999999,false
 6367,Store kitchen,927,911,0.982740021574973,0.999999,false
@@ -1393,9 +1393,9 @@ article_id,article_name,total_demand,demand_satisfied_from_stock,achieved_fill_r
 6442,Electric personal care,17955,15357,0.8553049289891396,0.999999,false
 6503,"Glasses (drink, beer, wine etc)",555,555,1.0,0.999999,false
 6512,Construction,1784,1784,1.0,0.999999,false
-6513,Reading glasses,2979,2172,0.729103726082578,0.999999,true
+6513,Reading glasses,2979,2400,0.8056394763343404,0.999999,true
 6515,Construction,393,393,1.0,0.999999,false
-6517,Ironing,6282,5737,0.9132441897484878,0.999999,true
+6517,Ironing,6282,5962,0.9490608086596626,0.999999,true
 6520,Insecticides,46,46,1.0,0.999999,true
 6522,Kitchen tools,801,801,1.0,0.999999,false
 6523,Bathroom accessories,13412,13303,0.9918729495973755,0.999999,false

@@ -12,7 +12,7 @@ from rich.progress import Progress, BarColumn, TextColumn
 from rich.console import Group
 import time
 
-GLOBAL_TARGET: float = 0.95
+GLOBAL_TARGET: float = 0.98
 INITIAL_TARGET: float = 0.5
 MAX_TARGET: float = 0.9999999999999
 
@@ -207,7 +207,8 @@ def iterative_optimization(
                 candidate_rows = [
                     row
                     for row in results_dict.values()
-                    if abs(row["target_fill_rate"] - MAX_TARGET) > 1e-9
+                    if abs(row["target_fill_rate"] - MAX_TARGET) > 1e-7
+                    and row["achieved_fill_rate"] < 1.0
                 ]
 
                 if not candidate_rows:
@@ -216,7 +217,7 @@ def iterative_optimization(
 
                 # Find 160 worst articles to reprocess
                 worst_rows = sorted(candidate_rows, key=unmet_demand, reverse=True)[
-                    :1600
+                    :160
                 ]
                 worst_articles: list[Article] = []
                 for row in worst_rows:
@@ -275,7 +276,7 @@ def iterative_optimization(
                     pl.DataFrame(list(results_dict.values()))
                 )
 
-    return current_global
+    return current_global, results_dict
 
 
 def main():
@@ -292,9 +293,10 @@ def main():
         f"\nGlobal fill rate achieved after initial optimiztion: {current_global:.4f}"
     )
 
-    current_global = iterative_optimization(
+    current_global, results_dict = iterative_optimization(
         articles, article_targets, results_dict, current_global
     )
+    results: pl.DataFrame = pl.DataFrame(list(results_dict.values()))
 
     print(f"\nReached global target: {current_global:.4f}")
 

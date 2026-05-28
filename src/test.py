@@ -10,4 +10,13 @@ slow_movers: list[Article] = [article for article in articles if article.slow_mo
 
 manager = Manager()
 queue = manager.Queue()
-process_article(articles[0], 0.8, queue)
+article: Article
+for a in articles:
+    if a.id == 6564:
+        article = a
+process_article(article, 0.9, queue)
+
+for article in reversed(articles):
+    print(f"Processing for article {article.id}")
+    result = process_article(article, 0.9, queue)
+    print(f"Achieved fill rate: {result['achieved_fill_rate']}")

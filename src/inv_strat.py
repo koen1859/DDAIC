@@ -119,12 +119,11 @@ class InvStratNormal:
             int(self.model.forecast() / self.article.lead_time),
         )
         mu, sigma = self.lead_time_demand()
+        sigma = max(sigma, 1e-6)
 
         # Bounds as in the book, ensure upper bound is enough to achieve min_fill_rate
         lower = -self.Q
-        upper = mu + 10.0 * sigma
-        while self.fill_rate(mu, sigma, upper, self.Q) < self.min_fill_rate:
-            upper += 10.0 * sigma
+        upper = mu + 30.0 * sigma
 
         # Bisection
         for _ in range(max_iter):

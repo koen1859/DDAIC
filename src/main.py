@@ -124,6 +124,10 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
         "achieved_fill_rate": demand_satisfied_from_stock / total_demand,
         "target_fill_rate": min_fill_rate,
         "slow_mover": article.slow_mover,
+        "holding_cost": sum(on_hand_list)
+        * article.sales_price
+        * 0.2
+        / 365,  # Yearly holding cost is 20% of sales price so daily divide by 365
     }
 
 

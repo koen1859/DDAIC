@@ -327,7 +327,7 @@ def main():
     )
     results = pl.concat([results, total_row])
 
-    results.write_csv("../results/results.csv")
+    results.write_csv("../results/results_winters_ts_weekly.csv")
 
 
 if __name__ == "__main__":

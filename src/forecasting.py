@@ -55,7 +55,7 @@ class WintersTrendSeasonal:
         alpha: float = 0.1,
         beta: float = 0.05,
         gamma: float = 0.1,
-        periods_per_year: int = 12,
+        periods_per_year: int = 52,
     ) -> None:
         self.article: Article = article
         self.alpha: float = alpha

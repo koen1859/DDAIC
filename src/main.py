@@ -3,6 +3,7 @@ from forecasting import ExponentialSmoothing, Croston, WintersTrendSeasonal
 from inv_strat import InvStratNormal, InvStratCompPois
 from plot import plot_demand, plot_inventory_strategy
 
+from statistics import mean
 from math import ceil
 import polars as pl
 from multiprocessing import Pool, Manager, Queue
@@ -303,6 +304,19 @@ def main():
     results: pl.DataFrame = pl.DataFrame(list(results_dict.values()))
 
     print(f"\nReached global target: {current_global:.4f}")
+    total_row: pl.DataFrame = pl.DataFrame(
+        {
+            "article_id": 0,
+            "article_name": "total",
+            "total_demand": sum(results["total_demand"]),
+            "demand_satisfied_from_stock": sum(results["demand_satisfied_from_stock"]),
+            "achieved_fill_rate": global_fill_rate(results),
+            "target_fill_rate": mean(results["target_fill_rate"]),
+            "slow_mover": False,
+            "holding_cost": sum(results["holding_cost"]),
+        }
+    )
+    results = pl.concat([results, total_row])
 
     results.write_csv("../results/results.csv")
 

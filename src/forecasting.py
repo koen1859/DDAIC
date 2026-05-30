@@ -61,7 +61,7 @@ class WintersTrendSeasonal:
         self.alpha: float = alpha
         self.beta: float = beta
         self.gamma: float = gamma
-        self.T: int = periods_per_year  # Number of periods per year
+        self.periods_per_year: int = periods_per_year  # Number of periods per year
 
         # Track the index of the last data point used for calculation
         self.current_idx: int = 0
@@ -74,7 +74,7 @@ class WintersTrendSeasonal:
 
     def _initialize_parameters(self) -> None:
         """Initialize level, trend, and seasonal indices from training data."""
-        if len(self.article.train_demand) < self.T:
+        if len(self.article.train_demand) < self.periods_per_year:
             # Not enough data for seasonal initialization
             self.a = (
                 sum(self.article.train_demand) / len(self.article.train_demand)
@@ -82,32 +82,36 @@ class WintersTrendSeasonal:
                 else 1.0
             )
             self.b = 0.0
-            self.F = [1.0] * self.T
+            self.F = [1.0] * self.periods_per_year
             return
 
         # Initialize level: average of first seasonal period
-        first_period = self.article.train_demand[: self.T]
-        self.a = sum(first_period) / self.T if sum(first_period) > 0 else 1.0
+        first_period = self.article.train_demand[: self.periods_per_year]
+        self.a = (
+            sum(first_period) / self.periods_per_year if sum(first_period) > 0 else 1.0
+        )
 
         # Initialize trend: average change between first and second period
-        if len(self.article.train_demand) >= 2 * self.T:
-            second_period = self.article.train_demand[self.T : 2 * self.T]
-            second_avg = sum(second_period) / self.T
-            self.b = (second_avg - self.a) / self.T
+        if len(self.article.train_demand) >= 2 * self.periods_per_year:
+            second_period = self.article.train_demand[
+                self.periods_per_year : 2 * self.periods_per_year
+            ]
+            second_avg = sum(second_period) / self.periods_per_year
+            self.b = (second_avg - self.a) / self.periods_per_year
         else:
             self.b = 0.0
 
         # Initialize seasonal indices
-        self.F = [1.0] * self.T
+        self.F = [1.0] * self.periods_per_year
         if self.a > 0:
-            for i in range(self.T):
+            for i in range(self.periods_per_year):
                 if i < len(self.article.train_demand):
                     self.F[i] = self.article.train_demand[i] / self.a
 
         # Normalize seasonal indices so they sum to T
         sum_F = sum(self.F)
         if sum_F > 0:
-            self.F = [f * self.T / sum_F for f in self.F]
+            self.F = [f * self.periods_per_year / sum_F for f in self.F]
 
     def update(self, current_date: date) -> None:
         """
@@ -121,7 +125,7 @@ class WintersTrendSeasonal:
             x = self.article.demand[self.current_idx]
 
             # Determine which seasonal index to use (based on position in cycle)
-            seasonal_idx = self.current_idx % self.T
+            seasonal_idx = self.current_idx % self.periods_per_year
 
             # Calculate deseasonalized demand: x / F_t
             if self.F[seasonal_idx] > 0:
@@ -134,15 +138,12 @@ class WintersTrendSeasonal:
             self.residuals.append(x - forecasted)
 
             # Update level (equation 2.14)
-            # a_t = (1 - alpha) * (a_{t-1} + b_{t-1}) + alpha * (x_t / F_t)
             a_new = (1 - self.alpha) * (self.a + self.b) + self.alpha * x_deseasonalized
 
             # Update trend (equation 2.15)
-            # b_t = (1 - beta) * b_{t-1} + beta * (a_t - a_{t-1})
             b_new = (1 - self.beta) * self.b + self.beta * (a_new - self.a)
 
             # Update seasonal index (equation 2.16)
-            # F'_t = (1 - gamma) * F_t + gamma * (x_t / a_t)
             if a_new > 0:
                 F_prime = (1 - self.gamma) * self.F[seasonal_idx] + self.gamma * (
                     x / a_new
@@ -151,7 +152,6 @@ class WintersTrendSeasonal:
                 F_prime = self.F[seasonal_idx]
 
             # Immediately update the seasonal index (equation 2.17)
-            # F_{t+T} = F'_t (the updated index will be used again after T periods)
             self.F[seasonal_idx] = F_prime
 
             # Update state
@@ -161,10 +161,10 @@ class WintersTrendSeasonal:
             # Normalize seasonal indices to sum to T (equation 2.18)
             # This prevents the indices from drifting
             # Only normalize at the end of each seasonal cycle
-            if (self.current_idx + 1) % self.T == 0:
+            if (self.current_idx + 1) % self.periods_per_year == 0:
                 sum_F = sum(self.F)
                 if sum_F > 0:
-                    self.F = [f * self.T / sum_F for f in self.F]
+                    self.F = [f * self.periods_per_year / sum_F for f in self.F]
 
             self.current_idx += 1
 
@@ -175,11 +175,8 @@ class WintersTrendSeasonal:
         total_forecast = 0.0
 
         for k in range(1, days_forward + 1):
-            # Forecast for k steps ahead
-            # x_{t+k} = (a_t + k*b_t) * F_{t+k}
-
             # Determine which seasonal index applies (cycles every T periods)
-            seasonal_idx = (self.current_idx + k - 1) % self.T
+            seasonal_idx = (self.current_idx + k - 1) % self.periods_per_year
 
             # Point forecast (equation 2.20)
             forecast_value = (self.a + k * self.b) * self.F[seasonal_idx]

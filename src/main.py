@@ -38,6 +38,11 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
     total_demand: int = 0
     demand_satisfied_from_stock: int = 0
 
+    cost_price: float = 0.7 * article.sales_price
+    holding_price: float = (0.15 * cost_price) / 365.25
+    holding_cost: float = 0.0
+    purchasing_cost: float = 0.0
+
     in_test_period: bool = False
     first_test_index: int = -1
     days_since_update: int = 0
@@ -95,11 +100,14 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
             arrival_t = i + article.lead_time
             if arrival_t < len(order):
                 order[arrival_t] = order_qty
+                purchasing_cost += order_qty * cost_price
 
         on_hand_list.append(on_hand)
         inv_pos_list.append(inventory_pos)
         R_list.append(inv_strat.R)
         Q_list.append(inv_strat.Q)
+
+        holding_cost += on_hand * holding_price
 
         if i % 10 == 0:
             queue.put({"id": article.id, "progress": (i / len(article.dates)) * 100})
@@ -125,10 +133,9 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
         "achieved_fill_rate": demand_satisfied_from_stock / total_demand,
         "target_fill_rate": min_fill_rate,
         "slow_mover": article.slow_mover,
-        "holding_cost": sum(on_hand_list)
-        * article.sales_price
-        * 0.2
-        / 365,  # Yearly holding cost is 20% of sales price so daily divide by 365
+        "purchasing_cost": purchasing_cost,
+        "holding_cost": holding_cost,
+        "total_cost": purchasing_cost + holding_cost,
     }
 
 
@@ -313,7 +320,9 @@ def main():
             "achieved_fill_rate": global_fill_rate(results),
             "target_fill_rate": mean(results["target_fill_rate"]),
             "slow_mover": False,
+            "purchasing_cost": sum(results["purchasing_cost"]),
             "holding_cost": sum(results["holding_cost"]),
+            "total_cost": sum(results["total_cost"]),
         }
     )
     results = pl.concat([results, total_row])

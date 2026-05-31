@@ -3,20 +3,18 @@ import os
 from load_data import Article
 
 
-def plot_demand(article: Article, forecasts: list[float], first_test_index: int):
+def plot_demand(
+    article: Article, forecasts: list[float], first_test_index: int, model_name: str
+):
     # Plot full true demand
     plt.figure(figsize=(12, 6))
     plt.plot(article.dates, article.true_demand, label="True Demand", color="black")
 
     # Plot forecasted demand (aligned with test_dates)
-    if article.slow_mover:
-        label = "Forecasted demand (Croston)"
-    else:
-        label = "Forecasted demand (Winter's Trend Seasonal)"
     plt.plot(
         article.dates,
         forecasts,
-        label=label,
+        label=f"Forecasted demand ({model_name})",
         color="red",
         linestyle="--",
     )

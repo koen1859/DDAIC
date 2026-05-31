@@ -55,113 +55,95 @@ class WintersTrendSeasonal:
         alpha: float = 0.1,
         beta: float = 0.05,
         gamma: float = 0.1,
-        periods_per_year: int = 52,
+        periods_per_year: int = 52,  # 52 = weekly buckets, 12 = monthly buckets
     ) -> None:
-        self.article: Article = article
-        self.alpha: float = alpha
-        self.beta: float = beta
-        self.gamma: float = gamma
-        self.periods_per_year: int = periods_per_year  # Number of periods per year
-
-        # Track the index of the last data point used for calculation
-        self.current_idx: int = 0
-
-        # Keep track of residuals
+        self.article = article
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
+        self.periods_per_year = periods_per_year
+        self.current_idx = 0
         self.residuals: list[float] = []
 
-        # Initialize level and trend from training data
+        # Must be set before _initialize_parameters so _get_seasonal_idx works
+        self._n_train = len(article.train_demand)
         self._initialize_parameters()
 
+    def _get_seasonal_idx(self, absolute_day: int) -> int:
+        day_of_year = absolute_day % 365
+        return day_of_year * self.periods_per_year // 365
+
     def _initialize_parameters(self) -> None:
-        """Initialize level, trend, and seasonal indices from training data."""
-        if len(self.article.train_demand) < self.periods_per_year:
-            # Not enough data for seasonal initialization
-            self.a = (
-                sum(self.article.train_demand) / len(self.article.train_demand)
-                if self.article.train_demand
-                else 1.0
-            )
+        T = self.periods_per_year
+        n = self._n_train
+
+        if n < 365:
+            self.a = sum(self.article.train_demand) / max(n, 1) or 1.0
             self.b = 0.0
-            self.F = [1.0] * self.periods_per_year
+            self.F = [1.0] * T
             return
 
-        # Initialize level: average of first seasonal period
-        first_period = self.article.train_demand[: self.periods_per_year]
-        self.a = (
-            sum(first_period) / self.periods_per_year if sum(first_period) > 0 else 1.0
-        )
+        # Only use complete calendar years so every bucket is equally represented
+        n_complete = (n // 365) * 365
+        train = self.article.train_demand[:n_complete]
 
-        # Initialize trend: average change between first and second period
-        if len(self.article.train_demand) >= 2 * self.periods_per_year:
-            second_period = self.article.train_demand[
-                self.periods_per_year : 2 * self.periods_per_year
-            ]
-            second_avg = sum(second_period) / self.periods_per_year
-            self.b = (second_avg - self.a) / self.periods_per_year
+        # Level: overall mean of complete years
+        overall_mean = sum(train) / n_complete
+        self.a = overall_mean if overall_mean > 0 else 1.0
+
+        # Trend: average daily change from first to last complete year
+        if n_complete >= 2 * 365:
+            first_avg = sum(train[:365]) / 365
+            last_avg = sum(train[n_complete - 365 :]) / 365
+            self.b = (last_avg - first_avg) / (n_complete - 365)
         else:
             self.b = 0.0
 
-        # Initialize seasonal indices
-        self.F = [1.0] * self.periods_per_year
-        if self.a > 0:
-            for i in range(self.periods_per_year):
-                if i < len(self.article.train_demand):
-                    self.F[i] = self.article.train_demand[i] / self.a
+        # Seasonal factors: average (demand / level) for each bucket across all years
+        sums = [0.0] * T
+        counts = [0] * T
+        for i, d in enumerate(train):
+            idx = self._get_seasonal_idx(i)
+            sums[idx] += d
+            counts[idx] += 1
 
-        # Normalize seasonal indices so they sum to T
+        self.F = [
+            (sums[i] / counts[i]) / self.a if counts[i] > 0 and self.a > 0 else 1.0
+            for i in range(T)
+        ]
+
+        # Normalize so F sums to T
         sum_F = sum(self.F)
         if sum_F > 0:
-            self.F = [f * self.periods_per_year / sum_F for f in self.F]
+            self.F = [f * T / sum_F for f in self.F]
 
     def update(self, current_date: date) -> None:
-        """
-        Update level, trend, and seasonal indices based on data up to current_date.
-        Uses equations (2.14), (2.15), and (2.16)-(2.18) from book.
-        """
         while (
             self.current_idx < len(self.article.dates)
             and self.article.dates[self.current_idx] <= current_date
         ):
             x = self.article.demand[self.current_idx]
 
-            # Determine which seasonal index to use (based on position in cycle)
-            seasonal_idx = self.current_idx % self.periods_per_year
+            abs_day = self._n_train + self.current_idx
+            seasonal_idx = self._get_seasonal_idx(abs_day)
 
-            # Calculate deseasonalized demand: x / F_t
-            if self.F[seasonal_idx] > 0:
-                x_deseasonalized = x / self.F[seasonal_idx]
-            else:
-                x_deseasonalized = x
+            self.residuals.append(x - (self.a + self.b) * self.F[seasonal_idx])
 
-            # Store residual
-            forecasted = (self.a + self.b) * self.F[seasonal_idx]
-            self.residuals.append(x - forecasted)
-
-            # Update level (equation 2.14)
-            a_new = (1 - self.alpha) * (self.a + self.b) + self.alpha * x_deseasonalized
-
-            # Update trend (equation 2.15)
+            x_deseas = x / self.F[seasonal_idx] if self.F[seasonal_idx] > 0 else x
+            a_new = (1 - self.alpha) * (self.a + self.b) + self.alpha * x_deseas
             b_new = (1 - self.beta) * self.b + self.beta * (a_new - self.a)
+            F_new = (
+                (1 - self.gamma) * self.F[seasonal_idx] + self.gamma * (x / a_new)
+                if a_new > 0
+                else self.F[seasonal_idx]
+            )
 
-            # Update seasonal index (equation 2.16)
-            if a_new > 0:
-                F_prime = (1 - self.gamma) * self.F[seasonal_idx] + self.gamma * (
-                    x / a_new
-                )
-            else:
-                F_prime = self.F[seasonal_idx]
-
-            # Immediately update the seasonal index (equation 2.17)
-            self.F[seasonal_idx] = F_prime
-
-            # Update state
+            self.F[seasonal_idx] = F_new
             self.a = a_new
             self.b = b_new
 
-            # Normalize seasonal indices to sum to T (equation 2.18)
-            # This prevents the indices from drifting
-            # Only normalize at the end of each seasonal cycle
-            if (self.current_idx + 1) % self.periods_per_year == 0:
+            # Normalize once per complete year
+            if (abs_day + 1) % 365 == 0:
                 sum_F = sum(self.F)
                 if sum_F > 0:
                     self.F = [f * self.periods_per_year / sum_F for f in self.F]
@@ -172,21 +154,12 @@ class WintersTrendSeasonal:
         if days_forward is None:
             days_forward = self.article.lead_time
 
-        total_forecast = 0.0
-
+        total = 0.0
         for k in range(1, days_forward + 1):
-            # Determine which seasonal index applies (cycles every T periods)
-            seasonal_idx = (self.current_idx + k - 1) % self.periods_per_year
-
-            # Point forecast (equation 2.20)
-            forecast_value = (self.a + k * self.b) * self.F[seasonal_idx]
-
-            # Ensure non-negative forecast
-            forecast_value = max(0.0, forecast_value)
-
-            total_forecast += forecast_value
-
-        return total_forecast
+            abs_day = self._n_train + self.current_idx + k - 1
+            seasonal_idx = self._get_seasonal_idx(abs_day)
+            total += max(0.0, (self.a + k * self.b) * self.F[seasonal_idx])
+        return total
 
 
 class Croston:

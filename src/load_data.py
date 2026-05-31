@@ -1,13 +1,7 @@
 import polars as pl
 from datetime import date, datetime
 import multiprocessing
-
-
-def sanitize_name(name: str) -> str:
-    invalid_chars = r'\/:*?"<>| '
-    for c in invalid_chars:
-        name = name.replace(c, "_")
-    return name
+from statistics import mean
 
 
 class Article:
@@ -63,6 +57,8 @@ class Article:
         self.min_order_quantity = round(
             self.demand_multiplier * self.min_order_quantity
         )
+
+        self.seasonal: bool = max(self.train_demand) / mean(self.train_demand) > 6
 
     # Method to print class for debugging
     def __str__(self):

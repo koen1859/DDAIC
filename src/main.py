@@ -21,9 +21,15 @@ MAX_TARGET: float = 0.9999999999999
 def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dict:
     if article.slow_mover:
         model = Croston(article)
+        model_name = "Croston"
         inv_strat: InvStratCompPois = InvStratCompPois(article, model, min_fill_rate)
     else:
-        model = WintersTrendSeasonal(article)
+        if article.seasonal:
+            model = WintersTrendSeasonal(article, periods_per_year=12)
+            model_name = "Winters' Trend Seasonal"
+        else:
+            model = ExponentialSmoothing(article)
+            model_name = "Exponential Smoothing"
         inv_strat: InvStratNormal = InvStratNormal(article, model, min_fill_rate)
 
     backorders: int = 0
@@ -112,7 +118,7 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
         if i % 10 == 0:
             queue.put({"id": article.id, "progress": (i / len(article.dates)) * 100})
 
-    plot_demand(article, forecasts, first_test_index)
+    plot_demand(article, forecasts, first_test_index, model_name)
     plot_inventory_strategy(
         article,
         on_hand_list,
@@ -219,7 +225,7 @@ def iterative_optimization(
                 candidate_rows = [
                     row
                     for row in results_dict.values()
-                    if abs(row["target_fill_rate"] - MAX_TARGET) > 1e-7
+                    if abs(row["target_fill_rate"] - MAX_TARGET) > 1e-9
                     and row["achieved_fill_rate"] < 1.0
                 ]
 
@@ -327,7 +333,7 @@ def main():
     )
     results = pl.concat([results, total_row])
 
-    results.write_csv("../results/results_winters_ts_weekly.csv")
+    results.write_csv("../results/results.csv")
 
 
 if __name__ == "__main__":

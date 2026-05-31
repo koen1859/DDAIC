@@ -217,7 +217,8 @@ class InvStratCompPois:
 
         # At least MOQ and at least avg daily demand
         self.Q: int = max(
-            article.min_order_quantity, ceil(model.forecast() / self.article.lead_time)
+            article.min_order_quantity,
+            ceil(model.forecast(self.article.lead_time) / self.article.lead_time),
         )
 
     def optimize(self) -> None:

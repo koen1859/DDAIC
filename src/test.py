@@ -13,6 +13,6 @@ manager = Manager()
 queue = manager.Queue()
 article: Article
 for a in articles:
-    if a.id == 7096:
+    if a.id == 2661:
         article = a
 plot_demand_no_fc(article)

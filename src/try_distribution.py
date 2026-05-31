@@ -19,114 +19,108 @@ for i, article in enumerate(lowest_20, start=1):
     frac = positive_fraction(article)
     print(f"{i}: {article.id} fraction={frac:.4f}")
 
-# I think that article with id 2505 looks good to try to fit a distribution of demand size per customer
-# This is the one with the 10th lowest fraction of days with positive demand
-article_2505: Article = lowest_20[-1]
+    # Only use positive demands
+    data = np.array([d for d in article.demand if d > 0])
 
-# Only use positive demands
-data = np.array([d for d in article.demand if d > 0])
+    print(f"Article id: {article.id}")
+    print(f"Number of positive observations: {len(data)}")
+    print(f"Mean: {np.mean(data):.3f}")
+    print(f"Variance: {np.var(data):.3f}")
 
-print(f"Article id: {article.id}")
-print(f"Number of positive observations: {len(data)}")
-print(f"Mean: {np.mean(data):.3f}")
-print(f"Variance: {np.var(data):.3f}")
+    # Candidate distributions: Poisson, Geometric, Negative Binomial, Logarithmic
 
-# Candidate distributions: Poisson, Geometric, Negative Binomial, Logarithmic
+    x = np.arange(1, data.max() + 1)
 
-x = np.arange(0, data.max() + 1)
+    # Empirical histogram
+    plt.figure(figsize=(10, 6))
+    plt.hist(
+        data,
+        bins=np.arange(data.max() + 2) - 0.5,
+        density=True,
+        alpha=0.5,
+        label="Empirical",
+    )
 
-# Empirical histogram
-plt.figure(figsize=(10, 6))
-plt.hist(
-    data,
-    bins=np.arange(data.max() + 2) - 0.5,
-    density=True,
-    alpha=0.5,
-    label="Empirical",
-)
-
-# Poisson fit
-poisson_lambda = np.mean(data)
-poisson_pmf = stats.poisson.pmf(x, poisson_lambda)
-
-plt.plot(
-    x,
-    poisson_pmf,
-    "o-",
-    label=f"Poisson λ={poisson_lambda:.2f}",
-)
-
-# Geometric fit
-# scipy geometric starts at 1
-# mean = 1/p
-geom_p = 1 / np.mean(data)
-geom_pmf = stats.geom.pmf(x, geom_p)
-
-plt.plot(
-    x,
-    geom_pmf,
-    "o-",
-    label=f"Geometric p={geom_p:.2f}",
-)
-
-# Negative Binomial fit
-# Method of moments
-# variance = mu + mu^2 / r
-# => r = mu^2 / (var - mu)
-# p = r / (r + mu)
-mu = np.mean(data)
-var = np.var(data)
-
-if var > mu:
-    r = mu**2 / (var - mu)
-    p = r / (r + mu)
-
-    nbinom_pmf = stats.nbinom.pmf(x, r, p)
+    # Poisson fit
+    poisson_lambda = np.mean(data)
+    poisson_pmf = stats.poisson.pmf(x, poisson_lambda)
 
     plt.plot(
         x,
-        nbinom_pmf,
+        poisson_pmf,
         "o-",
-        label=f"NegBin r={r:.2f}, p={p:.2f}",
+        label=f"Poisson λ={poisson_lambda:.2f}",
     )
-else:
-    print("Variance <= mean, Negative Binomial not appropriate")
 
-# Logarithmic (log-series) fit
-# Support starts at 1
+    # Geometric fit
+    # scipy geometric starts at 1
+    # mean = 1/p
+    geom_p = 1 / np.mean(data)
+    geom_pmf = stats.geom.pmf(x, geom_p)
 
+    plt.plot(
+        x,
+        geom_pmf,
+        "o-",
+        label=f"Geometric p={geom_p:.2f}",
+    )
 
-# Maximum likelihood estimate of p
-# Negative log-likelihood
-def neg_ll(p):
-    if p <= 0 or p >= 1:
-        return np.inf
-    return -np.sum(stats.logser.logpmf(data, p))
+    # Negative Binomial fit
+    # Method of moments
+    # variance = mu + mu^2 / r
+    # => r = mu^2 / (var - mu)
+    # p = r / (r + mu)
+    mu = np.mean(data)
+    var = np.var(data)
 
+    if var > mu:
+        r = mu**2 / (var - mu)
+        p = r / (r + mu)
 
-result = minimize_scalar(
-    neg_ll,
-    bounds=(1e-6, 0.999999),
-    method="bounded",
-)
+        nbinom_pmf = stats.nbinom.pmf(x, r, p)
 
-logser_p = result.x
+        plt.plot(
+            x,
+            nbinom_pmf,
+            "o-",
+            label=f"NegBin r={r:.2f}, p={p:.2f}",
+        )
+    else:
+        print("Variance <= mean, Negative Binomial not appropriate")
 
-logser_pmf = stats.logser.pmf(x, logser_p)
+    # Logarithmic (log-series) fit
+    # Support starts at 1
 
-plt.plot(
-    x,
-    logser_pmf,
-    "o-",
-    label=f"Logarithmic p={logser_p:.2f}",
-)
-plt.xlabel("Demand size")
-plt.ylabel("Probability")
-plt.title(f"Demand distribution fit for article {article.id}")
-plt.legend()
-plt.grid()
-plt.show()
+    # Maximum likelihood estimate of p
+    # Negative log-likelihood
+    def neg_ll(p):
+        if p <= 0 or p >= 1:
+            return np.inf
+        return -np.sum(stats.logser.logpmf(data, p))
 
+    result = minimize_scalar(
+        neg_ll,
+        bounds=(1e-6, 0.999999),
+        method="bounded",
+    )
 
-# From this we conclude that the geometric or logartithmic distribution are the best fits
-# Logarithmic is much easier to work with so use this one in analysis.
+    logser_p = result.x
+
+    logser_pmf = stats.logser.pmf(x, logser_p)
+
+    plt.plot(
+        x,
+        logser_pmf,
+        "o-",
+        label=f"Logarithmic p={logser_p:.2f}",
+    )
+    plt.xlabel("Demand size")
+    plt.ylabel("Probability")
+    plt.title(f"Demand distribution fit for article {article.id}")
+    plt.legend()
+    plt.grid()
+    plt.savefig(f"../figures/distr_test_{article.id}.png")
+    plt.close()
+
+    # From this we conclude that the geometric or logartithmic distribution are the best fits
+    # Logarithmic is much easier to work with so use this one in analysis.

@@ -1,5 +1,5 @@
 from load_data import Article
-from datetime import date
+from datetime import date, timedelta
 
 
 class ExponentialSmoothing:
@@ -64,47 +64,44 @@ class WintersTrendSeasonal:
         self.periods_per_year = periods_per_year
         self.current_idx = 0
         self.residuals: list[float] = []
+        self._last_date = article.train_dates[
+            0
+        ]  # Last date used to update params. Initialize as first train date
 
         # Must be set before _initialize_parameters so _get_seasonal_idx works
         self._n_train = len(article.train_demand)
         self._initialize_parameters()
 
-    def _get_seasonal_idx(self, absolute_day: int) -> int:
-        day_of_year = absolute_day % 365
-        return day_of_year * self.periods_per_year // 365
+    def _get_seasonal_idx(self, day: date) -> int:
+        day_of_year = day.timetuple().tm_yday - 1
+        return min(
+            day_of_year * self.periods_per_year // 365, self.periods_per_year - 1
+        )
 
     def _initialize_parameters(self) -> None:
         T = self.periods_per_year
         n = self._n_train
 
-        if n < 365:
-            self.a = sum(self.article.train_demand) / max(n, 1) or 1.0
-            self.b = 0.0
-            self.F = [1.0] * T
-            return
-
         # Only use complete calendar years so every bucket is equally represented
         n_complete = (n // 365) * 365
         train = self.article.train_demand[:n_complete]
+        train_dates = self.article.train_dates[:n_complete]
 
         # Level: overall mean of complete years
         overall_mean = sum(train) / n_complete
         self.a = overall_mean if overall_mean > 0 else 1.0
 
         # Trend: average daily change from first to last complete year
-        if n_complete >= 2 * 365:
-            first_avg = sum(train[:365]) / 365
-            last_avg = sum(train[n_complete - 365 :]) / 365
-            self.b = (last_avg - first_avg) / (n_complete - 365)
-        else:
-            self.b = 0.0
+        first_avg = sum(train[:365]) / 365
+        last_avg = sum(train[n_complete - 365 :]) / 365
+        self.b = (last_avg - first_avg) / (n_complete - 365)
 
         # Seasonal factors: average (demand / level) for each bucket across all years
         sums = [0.0] * T
         counts = [0] * T
-        for i, d in enumerate(train):
-            idx = self._get_seasonal_idx(i)
-            sums[idx] += d
+        for demand, day in zip(train, train_dates):
+            idx = self._get_seasonal_idx(day)
+            sums[idx] += demand
             counts[idx] += 1
 
         self.F = [
@@ -122,10 +119,10 @@ class WintersTrendSeasonal:
             self.current_idx < len(self.article.dates)
             and self.article.dates[self.current_idx] <= current_date
         ):
+            actual_date: date = self.article.dates[self.current_idx]
             x = self.article.demand[self.current_idx]
 
-            abs_day = self._n_train + self.current_idx
-            seasonal_idx = self._get_seasonal_idx(abs_day)
+            seasonal_idx = self._get_seasonal_idx(actual_date)
 
             self.residuals.append(x - (self.a + self.b) * self.F[seasonal_idx])
 
@@ -142,13 +139,13 @@ class WintersTrendSeasonal:
             self.a = a_new
             self.b = b_new
 
-            # Normalize once per complete year
-            if (abs_day + 1) % 365 == 0:
-                sum_F = sum(self.F)
-                if sum_F > 0:
-                    self.F = [f * self.periods_per_year / sum_F for f in self.F]
+            # Normalize
+            sum_F = sum(self.F)
+            if sum_F > 0:
+                self.F = [f * self.periods_per_year / sum_F for f in self.F]
 
             self.current_idx += 1
+            self._last_date = actual_date
 
     def forecast(self, days_forward: int | None = None) -> float:
         if days_forward is None:
@@ -156,8 +153,8 @@ class WintersTrendSeasonal:
 
         total = 0.0
         for k in range(1, days_forward + 1):
-            abs_day = self._n_train + self.current_idx + k - 1
-            seasonal_idx = self._get_seasonal_idx(abs_day)
+            forecast_date = self._last_date + timedelta(days=k)
+            seasonal_idx = self._get_seasonal_idx(forecast_date)
             total += max(0.0, (self.a + k * self.b) * self.F[seasonal_idx])
         return total
 

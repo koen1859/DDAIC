@@ -16,3 +16,6 @@ for a in articles:
     if a.id == 2661:
         article = a
 plot_demand_no_fc(article)
+
+for article in reversed(articles):
+    process_article(article, 0.5, queue)

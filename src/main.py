@@ -25,7 +25,7 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
         inv_strat: InvStratCompPois = InvStratCompPois(article, model, min_fill_rate)
     else:
         if article.seasonal:
-            model = WintersTrendSeasonal(article, periods_per_year=52)
+            model = WintersTrendSeasonal(article, periods_per_year=12)
             model_name = "Winters' Trend Seasonal"
         else:
             model = ExponentialSmoothing(article)
@@ -106,14 +106,16 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
             arrival_t = i + article.lead_time
             if arrival_t < len(order):
                 order[arrival_t] = order_qty
-                purchasing_cost += order_qty * cost_price
+                if in_test_period:
+                    purchasing_cost += order_qty * cost_price
 
         on_hand_list.append(on_hand)
         inv_pos_list.append(inventory_pos)
         R_list.append(inv_strat.R)
         Q_list.append(inv_strat.Q)
 
-        holding_cost += on_hand * holding_price
+        if in_test_period:
+            holding_cost += on_hand * holding_price
 
         if i % 10 == 0:
             queue.put({"id": article.id, "progress": (i / len(article.dates)) * 100})

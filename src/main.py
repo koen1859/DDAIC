@@ -15,7 +15,7 @@ import time
 
 GLOBAL_TARGET: float = 0.98
 INITIAL_TARGET: float = 0.5
-MAX_TARGET: float = 0.9999999999999
+MAX_TARGET: float = 0.99999999999999999999
 
 
 def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dict:
@@ -25,7 +25,7 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
         inv_strat: InvStratCompPois = InvStratCompPois(article, model, min_fill_rate)
     else:
         if article.seasonal:
-            model = WintersTrendSeasonal(article, periods_per_year=12)
+            model = WintersTrendSeasonal(article, periods_per_year=52)
             model_name = "Winters' Trend Seasonal"
         else:
             model = ExponentialSmoothing(article)
@@ -77,7 +77,7 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
             model.update(current_date)
             if article.slow_mover:
                 # only update R,Q for slow movers at most once a month since otherwise very slow
-                if days_since_update > 30:
+                if days_since_update > 7:
                     inv_strat.optimize()
                     days_since_update = 0
                 days_since_update += 1
@@ -211,7 +211,6 @@ def iterative_optimization(
     results_dict: dict,
     current_global: float,
 ):
-    """Run iterative optimization with progress display"""
     manager = Manager()
     queue = manager.Queue()
     active_tasks = {}

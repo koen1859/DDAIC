@@ -36,6 +36,21 @@ def plot_demand(
     plt.close()
 
 
+def plot_demand_no_fc(article: Article):
+    # Plot full true demand
+    plt.figure(figsize=(12, 6))
+    plt.plot(article.dates, article.true_demand, label="Demand", color="black")
+
+    plt.title(f"{article.name}")
+    plt.xlabel("Date")
+    plt.ylabel("Demand")
+    plt.legend()
+    plt.tight_layout()
+    os.makedirs("../figures", exist_ok=True)
+    plt.savefig(f"../figures/{article.id}_demand.png")
+    plt.close()
+
+
 def plot_inventory_strategy(
     article: Article,
     on_hand: list[int],

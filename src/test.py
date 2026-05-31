@@ -1,3 +1,4 @@
+from plot import plot_demand_no_fc
 from multiprocessing import Manager, Queue
 from load_data import load_data, Article
 from main import process_article
@@ -12,11 +13,6 @@ manager = Manager()
 queue = manager.Queue()
 article: Article
 for a in articles:
-    if a.id == 6564:
+    if a.id == 7096:
         article = a
-process_article(article, 0.9, queue)
-
-for article in reversed(articles):
-    print(f"Processing for article {article.id}")
-    result = process_article(article, 0.9, queue)
-    print(f"Achieved fill rate: {result['achieved_fill_rate']}")
+plot_demand_no_fc(article)

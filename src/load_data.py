@@ -49,10 +49,10 @@ class Article:
         treshold = 100
         self.demand_multiplier: float = 1.0  # Multiplier for demand since we divide large demands for slow mover to speed up program
         if self.slow_mover and max(self.train_demand) > treshold:
-            self.demand = [int(round(d / 100)) for d in self.demand]
-            self.train_demand = [int(round(d / 100)) for d in self.train_demand]
-            self.test_demand = [int(round(d / 100)) for d in self.test_demand]
-            self.demand_multiplier = 1.0 / 100.0
+            self.demand = [int(round(d / 10)) for d in self.demand]
+            self.train_demand = [int(round(d / 10)) for d in self.train_demand]
+            self.test_demand = [int(round(d / 10)) for d in self.test_demand]
+            self.demand_multiplier = 1.0 / 10.0
 
         self.min_order_quantity = round(
             self.demand_multiplier * self.min_order_quantity

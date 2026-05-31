@@ -24,7 +24,9 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
         model_name = "Croston"
         inv_strat: InvStratCompPois = InvStratCompPois(article, model, min_fill_rate)
     else:
-        if article.seasonal:
+        if (
+            article.seasonal and len(article.train_demand) > 365 * 2
+        ):  # Requires at least two cycles
             model = WintersTrendSeasonal(article, periods_per_year=12)
             model_name = "Winters' Trend Seasonal"
         else:

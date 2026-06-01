@@ -28,7 +28,7 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
             article.seasonal and len(article.train_demand) > 365 * 2
         ):  # Requires at least two cycles
             model = WintersTrendSeasonal(article, periods_per_year=12)
-            model_name = "Winters' Trend Seasonal"
+            model_name = "Exponential Smoothing with Trend"
         else:
             model = ExponentialSmoothing(article)
             model_name = "Exponential Smoothing"

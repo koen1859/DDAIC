@@ -94,7 +94,8 @@ class WintersTrendSeasonal:
         # Trend: average daily change from first to last complete year
         first_avg = sum(train[:365]) / 365
         last_avg = sum(train[n_complete - 365 :]) / 365
-        self.b = (last_avg - first_avg) / (n_complete - 365)
+        # self.b = (last_avg - first_avg) / (n_complete - 365)
+        self.b = 0.0
 
         # Seasonal factors: average (demand / level) for each bucket across all years
         sums = [0.0] * T
@@ -121,18 +122,17 @@ class WintersTrendSeasonal:
         ):
             actual_date: date = self.article.dates[self.current_idx]
             x = self.article.demand[self.current_idx]
-
             seasonal_idx = self._get_seasonal_idx(actual_date)
 
             self.residuals.append(x - (self.a + self.b) * self.F[seasonal_idx])
 
-            x_deseas = x / self.F[seasonal_idx] if self.F[seasonal_idx] > 0 else x
+            F_s = max(self.F[seasonal_idx], 1e-2)
+            x_deseas = x / F_s
             a_new = (1 - self.alpha) * (self.a + self.b) + self.alpha * x_deseas
-            b_new = (1 - self.beta) * self.b + self.beta * (a_new - self.a)
-            F_new = (
-                (1 - self.gamma) * self.F[seasonal_idx] + self.gamma * (x / a_new)
-                if a_new > 0
-                else self.F[seasonal_idx]
+            # b_new = (1 - self.beta) * self.b + self.beta * (a_new - self.a)
+            b_new = 0.0
+            F_new = max(
+                (1 - self.gamma) * self.F[seasonal_idx] + self.gamma * (x / a_new), 1e-2
             )
 
             self.F[seasonal_idx] = F_new
@@ -141,8 +141,7 @@ class WintersTrendSeasonal:
 
             # Normalize
             sum_F = sum(self.F)
-            if sum_F > 0:
-                self.F = [f * self.periods_per_year / sum_F for f in self.F]
+            self.F = [f * self.periods_per_year / sum_F for f in self.F]
 
             self.current_idx += 1
             self._last_date = actual_date

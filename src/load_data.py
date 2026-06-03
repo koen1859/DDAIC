@@ -21,6 +21,9 @@ class Article:
         self.sales_price: float = float(info_row[5])
         self.lead_time: int = int(info_row[6])
 
+        self.purchasing_price: float = 0.7 * self.sales_price
+        self.holding_price: float = (0.15 * self.purchasing_price) / 365.25
+
         # Load the daily demands
         self.dates: list[date] = [
             datetime.strptime(d, "%Y%m%d").date() for d in dates[2:]

@@ -48,18 +48,16 @@ class ExponentialSmoothing:
         return self.a * days_forward
 
 
-class WintersTrendSeasonal:
+class ExponentialSmoothingWithTrend:
     def __init__(
         self,
         article: Article,
         alpha: float = 0.1,
-        beta: float = 0.05,
         gamma: float = 0.1,
         periods_per_year: int = 52,  # 52 = weekly buckets, 12 = monthly buckets
     ) -> None:
         self.article = article
         self.alpha = alpha
-        self.beta = beta
         self.gamma = gamma
         self.periods_per_year = periods_per_year
         self.current_idx = 0
@@ -91,12 +89,6 @@ class WintersTrendSeasonal:
         overall_mean = sum(train) / n_complete
         self.a = overall_mean if overall_mean > 0 else 1.0
 
-        # Trend: average daily change from first to last complete year
-        first_avg = sum(train[:365]) / 365
-        last_avg = sum(train[n_complete - 365 :]) / 365
-        # self.b = (last_avg - first_avg) / (n_complete - 365)
-        self.b = 0.0
-
         # Seasonal factors: average (demand / level) for each bucket across all years
         sums = [0.0] * T
         counts = [0] * T
@@ -124,20 +116,17 @@ class WintersTrendSeasonal:
             x = self.article.demand[self.current_idx]
             seasonal_idx = self._get_seasonal_idx(actual_date)
 
-            self.residuals.append(x - (self.a + self.b) * self.F[seasonal_idx])
+            self.residuals.append(x - self.a * self.F[seasonal_idx])
 
             F_s = max(self.F[seasonal_idx], 1e-2)
             x_deseas = x / F_s
-            a_new = (1 - self.alpha) * (self.a + self.b) + self.alpha * x_deseas
-            # b_new = (1 - self.beta) * self.b + self.beta * (a_new - self.a)
-            b_new = 0.0
+            a_new = (1 - self.alpha) * self.a + self.alpha * x_deseas
             F_new = max(
                 (1 - self.gamma) * self.F[seasonal_idx] + self.gamma * (x / a_new), 1e-2
             )
 
             self.F[seasonal_idx] = F_new
             self.a = a_new
-            self.b = b_new
 
             # Normalize
             sum_F = sum(self.F)
@@ -154,7 +143,7 @@ class WintersTrendSeasonal:
         for k in range(1, days_forward + 1):
             forecast_date = self._last_date + timedelta(days=k)
             seasonal_idx = self._get_seasonal_idx(forecast_date)
-            total += max(0.0, (self.a + k * self.b) * self.F[seasonal_idx])
+            total += max(0.0, self.a * self.F[seasonal_idx])
         return total
 
 

@@ -1,4 +1,4 @@
-from forecasting import ExponentialSmoothing, Croston, WintersTrendSeasonal
+from forecasting import ExponentialSmoothing, Croston, ExponentialSmoothingWithTrend
 from load_data import Article
 
 from scipy.stats import nbinom
@@ -34,12 +34,14 @@ class InvStratNormal:
     def __init__(
         self,
         article: Article,
-        model: ExponentialSmoothing | WintersTrendSeasonal | Croston,
+        model: ExponentialSmoothing | ExponentialSmoothingWithTrend | Croston,
         min_fill_rate: float,
     ) -> None:
         self.min_fill_rate: float = min_fill_rate
         self.article: Article = article
-        self.model: ExponentialSmoothing | Croston | WintersTrendSeasonal = model
+        self.model: ExponentialSmoothing | Croston | ExponentialSmoothingWithTrend = (
+            model
+        )
         self.R: int = 0
 
         # At least MOQ and at least avg daily demand over the lead time

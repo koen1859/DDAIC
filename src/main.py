@@ -1,9 +1,9 @@
 from load_data import load_data, Article
-from forecasting import ExponentialSmoothing, Croston, WintersTrendSeasonal
+from forecasting import ExponentialSmoothing, Croston, ExponentialSmoothingWithTrend
 from inv_strat import InvStratNormal, InvStratCompPois
 from plot import plot_demand, plot_inventory_strategy
 
-from statistics import mean
+from statistics import mean, stdev
 from math import ceil
 import polars as pl
 from multiprocessing import Pool, Manager, Queue
@@ -15,6 +15,7 @@ import time
 
 GLOBAL_TARGET: float = 0.98
 INITIAL_TARGET: float = 0.5
+MIN_FILL_RATE: float = 0.5
 MAX_TARGET: float = 0.99999999999999999999
 
 
@@ -27,7 +28,7 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
         if (
             article.seasonal and len(article.train_demand) > 365 * 2
         ):  # Requires at least two cycles
-            model = WintersTrendSeasonal(article, periods_per_year=12)
+            model = ExponentialSmoothingWithTrend(article, periods_per_year=12)
             model_name = "Exponential Smoothing with Trend"
         else:
             model = ExponentialSmoothing(article)
@@ -46,10 +47,7 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
     total_demand: int = 0
     demand_satisfied_from_stock: int = 0
 
-    cost_price: float = 0.7 * article.sales_price
-    holding_price: float = (0.15 * cost_price) / 365.25
     holding_cost: float = 0.0
-    purchasing_cost: float = 0.0
 
     in_test_period: bool = False
     first_test_index: int = -1
@@ -108,8 +106,6 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
             arrival_t = i + article.lead_time
             if arrival_t < len(order):
                 order[arrival_t] = order_qty
-                if in_test_period:
-                    purchasing_cost += order_qty * cost_price
 
         on_hand_list.append(on_hand)
         inv_pos_list.append(inventory_pos)
@@ -117,7 +113,7 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
         Q_list.append(inv_strat.Q)
 
         if in_test_period:
-            holding_cost += on_hand * holding_price
+            holding_cost += on_hand * article.holding_price
 
         if i % 10 == 0:
             queue.put({"id": article.id, "progress": (i / len(article.dates)) * 100})
@@ -143,9 +139,7 @@ def process_article(article: Article, min_fill_rate: float, queue: Queue) -> dic
         "achieved_fill_rate": demand_satisfied_from_stock / total_demand,
         "target_fill_rate": min_fill_rate,
         "slow_mover": article.slow_mover,
-        "purchasing_cost": purchasing_cost,
         "holding_cost": holding_cost,
-        "total_cost": purchasing_cost + holding_cost,
     }
 
 
@@ -300,8 +294,7 @@ def iterative_optimization(
     return current_global, results_dict
 
 
-def main():
-    articles: list[Article] = load_data()
+def our_iterative_method(articles: list[Article]) -> pl.DataFrame:
     article_targets = {article.id: INITIAL_TARGET for article in articles}
 
     raw_results = initial_optimization(articles, article_targets)
@@ -329,14 +322,82 @@ def main():
             "achieved_fill_rate": global_fill_rate(results),
             "target_fill_rate": mean(results["target_fill_rate"]),
             "slow_mover": False,
-            "purchasing_cost": sum(results["purchasing_cost"]),
             "holding_cost": sum(results["holding_cost"]),
-            "total_cost": sum(results["total_cost"]),
         }
     )
     results = pl.concat([results, total_row])
 
-    results.write_csv("../results/results.csv")
+    return results
+
+
+def fill_rate_differentiation(articles: list[Article]) -> dict[int, float]:
+    stats = [
+        (
+            article,
+            mean(article.train_demand),
+            stdev(article.train_demand),
+        )
+        for article in articles
+    ]
+
+    stats.sort(
+        key=lambda x: x[2] * x[0].holding_price / x[1],
+        reverse=True,
+    )
+
+    weights = [sigma * article.holding_price for article, mu, sigma in stats]
+
+    suffix = [0.0] * (len(weights) + 1)
+
+    for i in range(len(weights) - 1, -1, -1):
+        suffix[i] = suffix[i + 1] + weights[i]
+
+    A = (1 - GLOBAL_TARGET) * sum(mu for _, mu, _ in stats)
+
+    article_targets = {}
+
+    for k, (article, mu, sigma) in enumerate(stats):
+        S2 = max(
+            1 - (A * sigma * article.holding_price) / (mu * suffix[k]),
+            MIN_FILL_RATE,
+        )
+
+        article_targets[article.id] = S2
+
+        A -= mu * (1 - S2)
+
+    return article_targets
+
+
+def run_with_fill_rate_differentiation(articles: list[Article]) -> pl.DataFrame:
+    article_targets = fill_rate_differentiation(articles)
+    raw_results = initial_optimization(articles, article_targets)
+
+    results: pl.DataFrame = pl.DataFrame([res.get() for res in raw_results])
+    total_row: pl.DataFrame = pl.DataFrame(
+        {
+            "article_id": 0,
+            "article_name": "total",
+            "total_demand": sum(results["total_demand"]),
+            "demand_satisfied_from_stock": sum(results["demand_satisfied_from_stock"]),
+            "achieved_fill_rate": global_fill_rate(results),
+            "target_fill_rate": mean(results["target_fill_rate"]),
+            "slow_mover": False,
+            "holding_cost": sum(results["holding_cost"]),
+        }
+    )
+    results = pl.concat([results, total_row])
+    return results
+
+
+def main():
+    articles: list[Article] = load_data()
+
+    # results_our_method: pl.DataFrame = our_iterative_method(articles)
+    # results_our_method.write_csv("../results/results.csv")
+
+    results_teunter_method: pl.DataFrame = run_with_fill_rate_differentiation(articles)
+    results_teunter_method.write_csv("../results/results_fr_diff.csv")
 
 
 if __name__ == "__main__":

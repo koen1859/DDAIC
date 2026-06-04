@@ -330,7 +330,9 @@ def our_iterative_method(articles: list[Article]) -> pl.DataFrame:
     return results
 
 
-def fill_rate_differentiation(articles: list[Article]) -> dict[int, float]:
+def fill_rate_differentiation(
+    articles: list[Article], tfr: float = GLOBAL_TARGET
+) -> dict[int, float]:
     stats = [
         (
             article,
@@ -352,7 +354,7 @@ def fill_rate_differentiation(articles: list[Article]) -> dict[int, float]:
     for i in range(len(weights) - 1, -1, -1):
         suffix[i] = suffix[i + 1] + weights[i]
 
-    A = (1 - GLOBAL_TARGET) * sum(mu for _, mu, _ in stats)
+    A = (1 - tfr) * sum(mu for _, mu, _ in stats)
 
     article_targets = {}
 
@@ -369,8 +371,10 @@ def fill_rate_differentiation(articles: list[Article]) -> dict[int, float]:
     return article_targets
 
 
-def run_with_fill_rate_differentiation(articles: list[Article]) -> pl.DataFrame:
-    article_targets = fill_rate_differentiation(articles)
+def run_with_fill_rate_differentiation(
+    articles: list[Article], tfr: float = GLOBAL_TARGET
+) -> pl.DataFrame:
+    article_targets = fill_rate_differentiation(articles, tfr=tfr)
     raw_results = initial_optimization(articles, article_targets)
 
     results: pl.DataFrame = pl.DataFrame([res.get() for res in raw_results])
@@ -396,8 +400,25 @@ def main():
     # results_our_method: pl.DataFrame = our_iterative_method(articles)
     # results_our_method.write_csv("../results/results.csv")
 
-    results_teunter_method: pl.DataFrame = run_with_fill_rate_differentiation(articles)
-    results_teunter_method.write_csv("../results/results_fr_diff.csv")
+    results_098: pl.DataFrame = run_with_fill_rate_differentiation(articles)
+    results_098.write_csv("../results/results_fr_diff_098.csv")
+
+    # results_099: pl.DataFrame = run_with_fill_rate_differentiation(articles, 0.99)
+    # results_099.write_csv("../results/results_fr_diff_099.csv")
+    #
+    # results_0999: pl.DataFrame = run_with_fill_rate_differentiation(articles, 0.999)
+    # results_0999.write_csv("../results/results_fr_diff_0999.csv")
+
+    # results_09999: pl.DataFrame = run_with_fill_rate_differentiation(articles, 0.9999)
+    # results_09999.write_csv("../results/results_fr_diff_09999.csv")
+    #
+    # results_099999: pl.DataFrame = run_with_fill_rate_differentiation(articles, 0.99999)
+    # results_099999.write_csv("../results/results_fr_diff_099999.csv")
+    #
+    # results_0999999: pl.DataFrame = run_with_fill_rate_differentiation(
+    #     articles, 0.999999
+    # )
+    # results_0999999.write_csv("../results/results_fr_diff_0999999.csv")
 
 
 if __name__ == "__main__":
